@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, Button, Input, Select, DatePicker, Modal } from '@/components/ui'
 import type { SelectOption } from '@/components/ui/Select'
 
@@ -22,6 +22,7 @@ interface ActivityFormProps {
   onSubmit: (activity: ActivityFormData) => Promise<void>
   onCancel?: () => void
   className?: string
+  initialData?: Partial<ActivityFormData>
 }
 
 interface ActivityFormData {
@@ -48,7 +49,8 @@ export function ActivityForm({
   campaigns, 
   onSubmit, 
   onCancel,
-  className = '' 
+  className = '',
+  initialData 
 }: ActivityFormProps) {
   const [formData, setFormData] = useState<ActivityFormData>({
     type: 'CALL',
@@ -62,6 +64,13 @@ export function ActivityForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showContactModal, setShowContactModal] = useState(false)
   const [showCampaignModal, setShowCampaignModal] = useState(false)
+
+  // Initialize formData with initialData if provided
+  useEffect(() => {
+    if (initialData) {
+      setFormData(prev => ({ ...prev, ...initialData }))
+    }
+  }, [initialData])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}

@@ -1,28 +1,126 @@
 "use client"
 
 import React, { useState, useMemo } from 'react'
-import type { Contact } from '@prisma/client'
+import { useSession } from 'next-auth/react'
+import type { ContactWithActivities } from '@/lib/my-500-data'
 import {
-  sortContactsForMy500,
-  getContactSummary,
-} from '@/lib/contactSorting'
+  getContactPriority,
+  getContactStatus,
+  needsAttention
+} from '@/lib/my-500-data'
+import { ActivityForm } from '@/components/activities/ActivityForm'
+import { Button, Modal } from '@/components/ui'
 
 interface My500PageProps {
-  contacts: Contact[]
+  contacts: ContactWithActivities[]
 }
 
 export function My500Page({ contacts }: My500PageProps) {
+  const { data: session } = useSession()
   const [search, setSearch] = useState('')
+  const [selectedContact, setSelectedContact] = useState<ContactWithActivities | null>(null)
+  const [showActivityModal, setShowActivityModal] = useState(false)
+  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false)
 
   const filteredContacts = useMemo(() => {
-    return sortContactsForMy500(
-      contacts.filter(c =>
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        (c.email?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-        (c.organisation?.toLowerCase().includes(search.toLowerCase()) ?? false)
-      )
+    return contacts.filter(c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.email?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      (c.organisation?.toLowerCase().includes(search.toLowerCase()) ?? false)
     )
   }, [contacts, search])
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'hot': return 'bg-red-100 text-red-800'
+      case 'warm': return 'bg-orange-100 text-orange-800'
+      case 'cold': return 'bg-blue-100 text-blue-800'
+      case 'lost': return 'bg-gray-100 text-gray-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'border-red-200 text-red-700'
+      case 'medium': return 'border-orange-200 text-orange-700'
+      case 'low': return 'border-blue-200 text-blue-700'
+      default: return 'border-gray-200 text-gray-700'
+    }
+  }
+
+  const getDaysSinceContact = (contact: ContactWithActivities): number | null => {
+    if (!contact.lastContacted) return null
+    const now = new Date()
+    const lastContacted = new Date(contact.lastContacted)
+    const diffTime = Math.abs(now.getTime() - lastContacted.getTime())
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  }
+
+  const handleQuickAction = async (contact: ContactWithActivities, type: 'EMAIL' | 'CALL' | 'MEETING') => {
+    setSelectedContact(contact)
+    setActivityType(type)
+    setShowActivityModal(true)
+    
+    // Fetch campaigns for the user
+    if (session?.user?.id && campaigns.length === 0) {
+      setLoadingCampaigns(true)
+      try {
+        const response = await fetch('/api/campaigns')
+        if (response.ok) {
+          const data = await response.json()
+          setCampaigns(data.campaigns || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch campaigns:', error)
+      } finally {
+        setLoadingCampaigns(false)
+      }
+    }
+  }
+
+  const handleActivitySubmit = async (activityData: any) => {
+    try {
+      // Clean the data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...activityData,
+        contactId: selectedContact?.id || activityData.contactId || null,
+        campaignId: activityData.campaignId || null,
+        note: activityData.note || null,
+        dueDate: activityData.dueDate || null,
+      }
+
+      // Submit activity to API
+      const response = await fetch('/api/activities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cleanedData),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to create activity: ${response.statusText}`)
+      }
+
+      // Close the modal
+      setShowActivityModal(false)
+      setSelectedContact(null)
+      
+      // Refresh the page to show updated activities
+      window.location.reload()
+    } catch (error) {
+      console.error('Failed to log activity:', error)
+      // TODO: Show error message to user
+    }
+  }
+
+  const handleActivityCancel = () => {
+    setShowActivityModal(false)
+    setSelectedContact(null)
+  }
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
@@ -39,7 +137,11 @@ export function My500Page({ contacts }: My500PageProps) {
       ) : (
         <ul className="space-y-4">
           {filteredContacts.map(contact => {
-            const summary = getContactSummary(contact)
+            const status = getContactStatus(contact)
+            const priority = getContactPriority(contact)
+            const daysSinceContact = getDaysSinceContact(contact)
+            const attentionNeeded = needsAttention(contact)
+            
             return (
               <li
                 key={contact.id}
@@ -48,31 +150,87 @@ export function My500Page({ contacts }: My500PageProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span data-testid="contact-name" className="font-semibold text-lg">{contact.name}</span>
-                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium uppercase ${summary.statusColor}`}>{summary.status}</span>
-                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium uppercase border ${summary.priorityColor}`}>{summary.priority}</span>
+                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium uppercase ${getStatusColor(status)}`}>{status}</span>
+                    <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium uppercase border ${getPriorityColor(priority)}`}>{priority}</span>
                   </div>
                   <div className="text-sm text-gray-500 truncate">
                     {contact.organisation && <span>{contact.organisation} &middot; </span>}
                     {contact.email}
                   </div>
-                  {summary.needsAttention && (
+                  {attentionNeeded && (
                     <div className="mt-2 text-xs text-red-600 font-medium" data-testid="attention-alert">
                       Needs attention
                     </div>
                   )}
-                </div>
-                <div className="mt-2 sm:mt-0 sm:ml-4 text-sm text-gray-400 text-right">
-                  {summary.daysSinceContact !== null ? (
-                    <span>{summary.daysSinceContact} days since last contact</span>
-                  ) : (
-                    <span>Never contacted</span>
+                  {contact.activities.length > 0 && (
+                    <div className="mt-1 text-xs text-gray-400">
+                      Last activity: {contact.activities[0].type} - {contact.activities[0].subject}
+                    </div>
                   )}
+                </div>
+                <div className="mt-2 sm:mt-0 sm:ml-4 flex flex-col sm:flex-row gap-2">
+                  <div className="text-sm text-gray-400 text-right">
+                    {daysSinceContact !== null ? (
+                      <span>{daysSinceContact} days since last contact</span>
+                    ) : (
+                      <span>Never contacted</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1 mt-2 sm:mt-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleQuickAction(contact, 'EMAIL')}
+                      className="text-xs px-2 py-1"
+                    >
+                      📧 Email
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleQuickAction(contact, 'CALL')}
+                      className="text-xs px-2 py-1"
+                    >
+                      📞 Call
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleQuickAction(contact, 'MEETING')}
+                      className="text-xs px-2 py-1"
+                    >
+                      🤝 Meeting
+                    </Button>
+                  </div>
                 </div>
               </li>
             )
           })}
         </ul>
       )}
+
+      {/* Activity Modal */}
+      <Modal
+        isOpen={showActivityModal}
+        onClose={handleActivityCancel}
+        title={`Log ${activityType.toLowerCase()} for ${selectedContact?.name}`}
+        size="lg"
+      >
+        {selectedContact && session?.user?.id && (
+          <ActivityForm
+            userId={session.user.id}
+            contacts={[selectedContact]}
+            campaigns={campaigns}
+            onSubmit={handleActivitySubmit}
+            onCancel={handleActivityCancel}
+            initialData={{
+              type: activityType,
+              subject: `${activityType} with ${selectedContact.name}`,
+              contactId: selectedContact.id,
+            }}
+          />
+        )}
+      </Modal>
     </div>
   )
 } 

@@ -9,6 +9,36 @@ global.React = React
 // Mock fetch globally
 global.fetch = vi.fn()
 
+// Mock next/navigation for client components
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/test-path',
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  redirect: vi.fn(),
+  notFound: vi.fn(),
+}))
+
+// Mock next-auth/react useSession for client components
+vi.mock('next-auth/react', () => ({
+  useSession: () => ({
+    data: {
+      user: {
+        id: 'test-user-id',
+        email: 'test@example.com',
+        name: 'Test User',
+      },
+      expires: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
+    },
+    status: 'authenticated',
+  }),
+  SessionProvider: ({ children }: { children: React.ReactNode }) => children,
+}))
+
 // Create a single Prisma client instance for testing
 const prisma = new PrismaClient()
 

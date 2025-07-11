@@ -18,25 +18,25 @@ export interface DatePickerProps {
   name?: string
 }
 
-const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
-  (
-    {
-      label,
-      value,
-      onChange,
-      minDate,
-      maxDate,
-      error,
-      required = false,
-      disabled = false,
-      placeholder = 'Select a date...',
-      className,
-      id,
-      name,
-      ...props
-    },
-    ref
-  ) => {
+export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
+  ({
+    label,
+    value,
+    onChange,
+    minDate,
+    maxDate,
+    error,
+    required = false,
+    disabled = false,
+    placeholder = 'Select a date',
+    className,
+    id,
+    name,
+    ...props
+  }, ref) => {
+    // Filter out props that shouldn't be passed to DOM elements
+    const { placeholderText, ...domProps } = props as any
+
     const [isOpen, setIsOpen] = useState(false)
     const [currentMonth, setCurrentMonth] = useState(() => {
       return value ? new Date(value.getFullYear(), value.getMonth(), 1) : new Date()
@@ -236,7 +236,7 @@ const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
             aria-haspopup="listbox"
             aria-describedby={error ? errorId : undefined}
             aria-invalid={error ? 'true' : 'false'}
-            {...props}
+            {...domProps}
           >
             <button
               type="button"
@@ -371,6 +371,4 @@ const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
   }
 )
 
-DatePicker.displayName = 'DatePicker'
-
-export { DatePicker } 
+DatePicker.displayName = 'DatePicker' 

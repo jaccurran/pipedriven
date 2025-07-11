@@ -150,7 +150,7 @@ describe('CampaignForm', () => {
   })
 
   it('shows loading state during submission', async () => {
-    const mockOnSubmit = vi.fn(() => new Promise(resolve => setTimeout(resolve, 100)))
+    const mockOnSubmit = vi.fn(() => new Promise<void>(resolve => setTimeout(resolve, 100)))
     render(<CampaignForm user={mockUser} onSubmit={mockOnSubmit} />)
     
     // Fill in required fields

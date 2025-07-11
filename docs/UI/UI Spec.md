@@ -38,14 +38,57 @@ Pipedriver is a standalone, mobile-optimised tool to enhance campaign management
   - Unified, scrollable card
   - Shows: Name, Org, Pipedrive existence, activity status (colour coded)
   - Tagging: Cold (default), Warm, Lost Cause
-  - Buttons for common actions:
-    - Email Sent
-    - Meeting Requested
-    - Meeting Planned (asks for date)
-    - Meeting Completed (asks for note)
-    - ...Other Actions
+  - **Action System:**
+    - **Primary Actions (always visible):** Email, Meeting Request, Meeting
+    - **Secondary Actions (ellipsis menu):** LinkedIn, Phone Call, Conference
+    - **Contact Details:** Click name to edit email, job title, organization, phone
+    - **Notes:** Separate option to capture notes against contact
 
-#### 3.3 My 500 View
+#### 3.3 Action Types & Forms
+
+##### 3.3.1 Email Action
+- **Purpose:** Log that an email has been sent (not compose email)
+- **Fields:**
+  - To whom (pre-filled with contact name)
+  - Subject (default: "Follow up from [Your Name]")
+  - Date sent (default: today)
+  - Responded (checkbox)
+- **Behavior:** Quick form popup, minimal fields
+
+##### 3.3.2 Meeting Request Action
+- **Purpose:** Log a meeting request sent
+- **Fields:**
+  - Date (default: today)
+- **Behavior:** Simple date picker popup
+
+##### 3.3.3 Meeting Action
+- **Purpose:** Log a meeting that occurred
+- **Fields:**
+  - Date (default: today)
+- **Behavior:** Simple date picker popup
+
+##### 3.3.4 Secondary Actions (LinkedIn, Phone Call, Conference)
+- **Purpose:** Log various outreach activities
+- **Fields:**
+  - Date (default: today)
+- **Behavior:** Simple date picker popup
+
+##### 3.3.5 Contact Details Edit
+- **Trigger:** Click on contact name
+- **Fields:**
+  - Email address
+  - Job title
+  - Organization
+  - Phone number
+- **Behavior:** Callout form overlay
+
+##### 3.3.6 Notes
+- **Purpose:** Capture general notes about the contact
+- **Fields:**
+  - Note text (multiline)
+- **Behavior:** Modal with text area
+
+#### 3.4 My 500 View
 - Shows contacts owned by the user (from app and Pipedrive)
 - Sort order:
   1. Recurring Activity Frequency
@@ -54,14 +97,15 @@ Pipedriver is a standalone, mobile-optimised tool to enhance campaign management
   4. Existing Customer Org status
 - Visual indicators for activity and lead status
 - Alerts for no recent activity
+- **Action System:** Same as Campaigns (Email, Meeting Request, Meeting visible, others in ellipsis)
 
-#### 3.4 Activity Tracking
+#### 3.5 Activity Tracking
 - Activity buttons trigger creation of local activity records
 - Once contact becomes Warm, activities replicated in Pipedrive
 - Momentum dashboard (compact, visual)
 - Timeline view in contact
 
-#### 3.5 Admin Settings
+#### 3.6 Admin Settings
 - Manage sectors, themes, labels, statuses, etc., if not present in Pipedrive
 
 ---
@@ -84,18 +128,24 @@ Pipedriver is a standalone, mobile-optimised tool to enhance campaign management
 - ContactTargetCount, MeetingTargetCount
 
 #### 2.2 Contact
-- ID, Name, Organisation, Email, Linked Pipedrive Contact ID
+- ID, Name, Organisation, Email, JobTitle, Phone, Linked Pipedrive Contact ID
 - Pipedrive Status (boolean)
 - Tags: Cold (default), Warm, Lost Cause
 - Campaign Link (ID)
 - ActivityLog[]
+- Notes[]
 - Status Indicators: Colour-coded
 
 #### 2.3 Activity
 - ID, Contact ID, Type (enum), Date, Note (optional), CreatedBy
+- **New Activity Types:** EMAIL, MEETING_REQUEST, MEETING, LINKEDIN, PHONE_CALL, CONFERENCE
+- **Email-specific fields:** ToWhom, Subject, DateSent, Responded
 - SyncedToPipedrive (boolean)
 
-#### 2.4 User
+#### 2.4 Note
+- ID, Contact ID, Content, CreatedBy, CreatedAt
+
+#### 2.5 User
 - ID, Name, Email, Role
 - Associated Contacts (500 View)
 - Associated Campaigns
@@ -115,6 +165,11 @@ Pipedriver is a standalone, mobile-optimised tool to enhance campaign management
   - Grey = no activity
   - Yellow = some activity
   - Green = Warm Lead
+- **Action System Rules:**
+  - Primary actions always visible
+  - Secondary actions in ellipsis menu
+  - All actions create activity records
+  - Contact details editable via name click
 
 ### 4. API Integration (Pipedrive)
 - Search: Contacts, Organisations
@@ -126,6 +181,13 @@ Pipedriver is a standalone, mobile-optimised tool to enhance campaign management
 - Kanban Board (Campaigns)
 - Search/Import Modal (Contacts)
 - Unified Contact Card (slideover/modal)
+- **Action Components:**
+  - QuickActionButton (Email, Meeting Request, Meeting)
+  - ActionMenu (ellipsis with secondary actions)
+  - EmailLogForm (to whom, subject, date, responded)
+  - DateLogForm (simple date picker)
+  - ContactEditForm (email, job title, org, phone)
+  - NoteForm (text area)
 - Momentum Dashboards
 - Settings Panel
 - Tabs for Campaign / 500 views

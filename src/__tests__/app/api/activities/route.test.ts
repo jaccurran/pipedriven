@@ -230,10 +230,8 @@ describe('/api/activities', () => {
       const activityData = {
         type: 'EMAIL' as ActivityType,
         subject: 'Follow-up Email',
-        description: 'Sent follow-up email about proposal',
-        date: '2024-01-15',
         note: 'Contact responded positively',
-        notes: 'Contact responded positively',
+        dueDate: '2024-01-15',
         contactId: mockContact.id,
       }
 
@@ -429,11 +427,10 @@ describe('/api/activities', () => {
     it('should handle service errors gracefully', async () => {
       // Arrange
       const activityData = {
-        type: 'EMAIL',
+        type: 'EMAIL' as ActivityType,
         subject: 'Follow-up Email',
-        description: 'Sent follow-up email about proposal',
-        date: '2024-01-15',
-        outcome: 'POSITIVE',
+        note: 'Contact responded positively',
+        dueDate: '2024-01-15',
         contactId: mockContact.id,
       }
 
