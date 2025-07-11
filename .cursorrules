@@ -1,0 +1,465 @@
+# Riza Project Rules
+# These rules enforce the project's architecture and coding standards
+
+# File Organization
+/app/**/*.tsx                 # Next.js routes and server components
+/components/**/*.tsx          # Reusable client-side components
+/server/**/*.ts              # Server-side services
+/lib/**/*.ts                 # Utility functions
+/types/**/*.ts              # Shared TypeScript types
+/middleware/**/*.ts          # Middleware for RBAC
+/public/**/*                 # Static assets
+/prisma/**/*                 # Prisma schema and migrations
+
+# Import Rules
+import_rules:
+  # Import Order
+  - name: "import_order"
+    description: "Enforce consistent import ordering"
+    rules:
+      - "Group imports in this order: third-party, local, components, types"
+      - "Add newlines between import groups"
+      - "Sort imports alphabetically within groups"
+      - "Use type imports for TypeScript types"
+      - "Use absolute imports (@/) for local modules"
+      - "Use relative imports (./) for component-specific imports"
+      - "Use explicit file extensions for imports"
+      - "No duplicate imports"
+      - "No unused imports"
+
+  # Import Patterns
+  - name: "import_patterns"
+    description: "Enforce consistent import patterns"
+    rules:
+      - "Use named imports for React components"
+      - "Use type imports for Prisma types"
+      - "Use default imports for third-party components"
+      - "Use namespace imports for utility libraries"
+      - "Use destructured imports for multiple exports"
+
+  # Import Validation
+  - name: "import_validation"
+    description: "Validate imports before they are added"
+    rules:
+      - "Check for circular dependencies"
+      - "Validate import paths exist"
+      - "Ensure imports are used"
+      - "Check for duplicate imports"
+      - "Verify type imports are used correctly"
+
+# Naming Conventions
+*.page.tsx                   # Page components
+*.route.ts                   # API routes
+*[A-Z]*.tsx                  # React components (PascalCase)
+use[A-Z]*.ts                # Custom hooks (camelCase)
+
+# Code Quality Rules
+max_file_length: 600         # Maximum lines per file
+max_component_length: 300    # Maximum lines per component
+require_typescript: true     # TypeScript required
+require_client_directive: true  # Require "use client" for client components
+require_server_validation: true # Require server-side validation
+require_rbac_check: true     # Require RBAC checks in server components
+no_unused_imports: true     # No unused imports allowed
+no_unused_variables: true   # No unused variables allowed
+no_unused_parameters: true  # No unused function parameters allowed
+no_unused_types: true       # No unused type definitions allowed
+no_unused_exports: true     # No unused exports allowed
+no_dead_code: true          # No dead code allowed
+no_any_types: true          # No explicit any types allowed
+no_implicit_any: true       # No implicit any types allowed
+
+# Component Rules
+server_component_default: true  # Default to server components
+client_component_markers: true  # Require "use client" directive
+form_handlers_client: true      # Form handlers must be in client components
+prisma_server_only: true        # Prisma access only in /server
+tailwind_only: true            # Use Tailwind for styling, no inline styles
+
+# Prisma Rules
+prisma_import_path: "@prisma/client/index"  # Required import path for Prisma types
+prisma_type_import: true                    # Require type imports for Prisma namespace
+prisma_client_path: "@/lib/prisma"          # Required import path for Prisma client
+prisma_error_handling: true                 # Require try/catch for Prisma operations
+prisma_validation: true                     # Require Zod validation for Prisma operations
+prisma_form_types: true                     # Require separate form types from Prisma types
+prisma_enum_import: true                    # Require explicit enum imports from Prisma
+prisma_relation_types: true                 # Require explicit relation type definitions
+prisma_status_handling: true                # Require explicit status field handling
+
+# Type Rules
+type_form_separation: true    # Separate form types from database types
+type_enum_exports: true       # Export enums from central type definitions
+type_validation_schema: true  # Require Zod schemas for type validation
+type_relation_definitions: true # Require explicit relation type definitions
+type_status_handling: true    # Require explicit status type handling
+
+# Testing Requirements
+require_tests: true           # Require tests for new features
+test_coverage: 80            # Minimum test coverage percentage
+require_tdd: true            # Require Test-Driven Development approach
+test_first_development: true # Write tests before implementing features
+
+# Documentation Requirements
+require_comments: true        # Require documentation for complex logic
+require_type_docs: true       # Require documentation for types
+require_api_docs: true        # Require documentation for API routes
+
+# Security Rules
+no_env_exposure: true        # No environment variables in client code
+require_rbac_middleware: true # Require RBAC middleware for protected routes
+no_direct_fetch: true        # No direct fetch in server components
+require_validation: true     # Require input validation using Zod
+
+# Performance Rules
+no_client_side_fetch: true   # No client-side data fetching unless necessary
+optimize_images: true        # Require image optimization
+lazy_load_components: true   # Require lazy loading for large components
+
+# Auth Rules
+require_role_relation: "roleAssignments"  # Use roleAssignments (not roles) for user role queries in auth (e.g. in lib/auth.ts)
+
+# Build and Performance Rules
+build_rules:
+  # Database Query Rules
+  - name: "prisma_query_optimization"
+    description: "Prevent N+1 queries by using include/select and batching"
+    rules:
+      - "Use Prisma's include() for related data in initial queries"
+      - "Batch related queries using Promise.all()"
+      - "Use select() to limit returned fields"
+      - "Avoid multiple separate queries for related data"
+
+  # Authentication and Session Rules
+  - name: "auth_session_handling"
+    description: "Standardize authentication and session checks"
+    rules:
+      - "Validate user session before database operations"
+      - "Cache user roles and permissions"
+      - "Use middleware for role-based access checks"
+      - "Log authentication failures"
+
+  # API Route Rules
+  - name: "api_route_validation"
+    description: "Standardize API route handling"
+    rules:
+      - "Validate query parameters before database operations"
+      - "Use consistent error response format"
+      - "Log API request parameters and response times"
+      - "Implement rate limiting for public endpoints"
+
+  # Event Handling Rules
+  - name: "event_data_handling"
+    description: "Standardize event data operations"
+    rules:
+      - "Use consistent date handling (ISO strings)"
+      - "Validate event status transitions"
+      - "Cache event lists with appropriate invalidation"
+      - "Implement pagination for event lists"
+
+  # Build Process Rules
+  - name: "build_process"
+    description: "Ensure consistent build process"
+    rules:
+      - "Run type checking before build"
+      - "Validate environment variables"
+      - "Check for circular dependencies"
+      - "Verify API route exports"
+
+  # Performance Monitoring
+  - name: "performance_monitoring"
+    description: "Track and optimize performance"
+    rules:
+      - "Log slow database queries (>100ms)"
+      - "Monitor API response times"
+      - "Track memory usage in development"
+      - "Profile build times"
+
+  # Code Cleanup Rules
+  - name: "code_cleanup"
+    description: "Ensure clean code and prevent build issues"
+    rules:
+      - "Run eslint --fix before build"
+      - "Remove unused imports and variables"
+      - "Remove unused dependencies from package.json"
+      - "Check for circular dependencies"
+      - "Verify all exports are used"
+      - "Remove commented-out code"
+      - "Clean up unused types and interfaces"
+      - "Remove any types and replace with proper types"
+      - "Fix all TypeScript errors before build"
+
+  # Dependency Management
+  - name: "dependency_management"
+    description: "Manage dependencies and prevent bloat"
+    rules:
+      - "Regularly audit dependencies with npm audit"
+      - "Remove unused dependencies"
+      - "Keep dependencies up to date"
+      - "Use exact versions for critical dependencies"
+      - "Document why each dependency is needed"
+      - "Check for duplicate dependencies"
+
+  # Build Optimization
+  - name: "build_optimization"
+    description: "Optimize build process and output"
+    rules:
+      - "Enable tree shaking in production builds"
+      - "Minimize bundle size"
+      - "Use dynamic imports for large components"
+      - "Optimize image assets"
+      - "Enable code splitting"
+      - "Monitor bundle size changes"
+
+# Ignore Patterns
+ignore_patterns:
+  - ".next/**"
+  - "dist/**"
+  - "build/**"
+  - "node_modules/**"
+  - "*.log"
+  - "coverage/**"
+
+# Environment Rules
+env_rules:
+  - name: "environment_validation"
+    description: "Ensure required environment variables"
+    rules:
+      - "Validate DATABASE_URL format"
+      - "Check NODE_ENV setting"
+      - "Verify API keys and secrets"
+      - "Validate email configuration"
+
+# Testing Rules
+test_rules:
+  - name: "test_coverage"
+    description: "Ensure adequate test coverage"
+    rules:
+      - "Maintain 80% test coverage"
+      - "Test API routes"
+      - "Test database operations"
+      - "Test authentication flows"
+
+# Test-Driven Development (TDD) Rules
+tdd_rules:
+  - name: "tdd_workflow"
+    description: "Enforce Test-Driven Development workflow"
+    rules:
+      - "Always write tests before implementing features (Red-Green-Refactor)"
+      - "Write failing tests first to define expected behavior"
+      - "Write minimal code to make tests pass"
+      - "Refactor code while keeping tests green"
+      - "Never write production code without a failing test"
+
+  - name: "tdd_test_types"
+    description: "Specify test types and coverage requirements"
+    rules:
+      - "Unit tests for all functions and methods"
+      - "Integration tests for API routes and database operations"
+      - "Component tests for React components using React Testing Library"
+      - "E2E tests for critical user workflows using Playwright"
+      - "Test all error conditions and edge cases"
+
+  - name: "tdd_test_structure"
+    description: "Enforce consistent test structure and naming"
+    rules:
+      - "Use descriptive test names that explain the expected behavior"
+      - "Follow AAA pattern: Arrange, Act, Assert"
+      - "Group related tests using describe blocks"
+      - "Use beforeEach/afterEach for test setup and cleanup"
+      - "Mock external dependencies and API calls"
+
+  - name: "tdd_test_quality"
+    description: "Ensure high-quality test implementation"
+    rules:
+      - "Tests should be independent and not rely on other tests"
+      - "Tests should be fast and not make external network calls"
+      - "Tests should be deterministic and not flaky"
+      - "Use meaningful assertions with clear error messages"
+      - "Test both success and failure scenarios"
+
+  - name: "tdd_file_organization"
+    description: "Organize test files consistently"
+    rules:
+      - "Test files should be co-located with source files"
+      - "Use .test.ts or .spec.ts extension for test files"
+      - "Create __tests__ directories for complex test suites"
+      - "Separate unit, integration, and E2E tests"
+      - "Use test utilities and helpers for common test patterns"
+
+  - name: "tdd_mocking_strategy"
+    description: "Define mocking and test isolation strategies"
+    rules:
+      - "Mock Prisma client for database tests"
+      - "Mock external APIs (Pipedrive, Brevo) for integration tests"
+      - "Mock NextAuth session for authentication tests"
+      - "Use MSW (Mock Service Worker) for API mocking"
+      - "Create reusable mock factories for common test data"
+
+  - name: "tdd_continuous_integration"
+    description: "Integrate TDD with CI/CD pipeline"
+    rules:
+      - "Run tests on every commit and pull request"
+      - "Fail builds if test coverage drops below 80%"
+      - "Run different test suites in parallel when possible"
+      - "Generate and publish test coverage reports"
+      - "Use test results to gate deployments"
+
+  - name: "tdd_refactoring"
+    description: "Maintain test quality during refactoring"
+    rules:
+      - "Keep tests up to date when refactoring production code"
+      - "Refactor tests to improve readability and maintainability"
+      - "Remove obsolete tests that no longer reflect requirements"
+      - "Update test data and mocks when interfaces change"
+      - "Ensure tests remain fast and reliable after refactoring"
+
+# Code Style Rules
+code_style_rules:
+  # TypeScript Rules
+  - name: "typescript_style"
+    description: "Enforce TypeScript best practices"
+    rules:
+      - "Use explicit return types for functions"
+      - "Use explicit parameter types"
+      - "Use type imports for Prisma types"
+      - "Use interface for object types"
+      - "Use type for union/intersection types"
+      - "Use enum for constant values"
+      - "Use const assertions for literal types"
+
+  # React Rules
+  - name: "react_style"
+    description: "Enforce React best practices"
+    rules:
+      - "Use 'use client' directive for client components"
+      - "Use server components by default"
+      - "Use proper component naming (PascalCase)"
+      - "Use proper hook naming (use prefix)"
+      - "Use proper prop types"
+      - "Use proper event handler types"
+
+  # Component Organization
+  - name: "component_organization"
+    description: "Enforce component organization"
+    rules:
+      - "Group imports by type"
+      - "Define types before component"
+      - "Define hooks after imports"
+      - "Define helper functions after hooks"
+      - "Define component after helpers"
+      - "Export component last"
+
+# Editor Integration
+editor_rules:
+  - name: "cursor_integration"
+    description: "Cursor-specific rules for code generation and editing"
+    rules:
+      - "Auto-organize imports on save"
+      - "Auto-format code on save"
+      - "Auto-fix linting issues on save"
+      - "Show import suggestions in correct order"
+      - "Prevent duplicate imports"
+      - "Enforce import grouping"
+      - "Auto-add type imports"
+      - "Auto-remove unused imports"
+      - "Auto-sort imports within groups"
+      - "Auto-add newlines between import groups"
+      - "Auto-convert to type imports when appropriate"
+      - "Auto-fix import paths to use @/ for local imports"
+      - "Auto-fix relative paths for component imports"
+      - "Auto-add file extensions for imports"
+      - "Auto-fix import casing"
+      - "Auto-fix import quotes"
+      - "Auto-fix import spacing"
+      - "Auto-fix import line breaks"
+      - "Auto-fix import comments"
+      - "Auto-fix import aliases"
+      - "Auto-fix import destructuring"
+      - "Auto-fix import namespace"
+      - "Auto-fix import default"
+      - "Auto-fix import named"
+      - "Auto-fix import type"
+      - "Auto-fix import order"
+      - "Auto-fix import validation"
+      - "Auto-fix import patterns"
+      - "Auto-fix import style"
+      - "Auto-fix import organization"
+      - "Auto-fix import documentation"
+      - "Auto-fix import testing"
+      - "Auto-fix import security"
+      - "Auto-fix import performance"
+      - "Auto-fix import maintainability"
+      - "Auto-fix import readability"
+      - "Auto-fix import consistency"
+      - "Auto-fix import best practices"
+
+# Build Process Rules
+build_process_rules:
+  # Pre-build Validation
+  - name: "pre_build_validation"
+    description: "Validate code quality before build"
+    rules:
+      - "Run TypeScript type checking (tsc --noEmit)"
+      - "Run ESLint with --fix flag"
+      - "Run all tests and ensure they pass"
+      - "Check for unused imports and variables"
+      - "Validate no explicit any types"
+      - "Check for circular dependencies"
+      - "Verify all exports are used"
+      - "Ensure test coverage meets minimum requirements"
+
+  # Build Steps
+  - name: "build_steps"
+    description: "Standardized build process"
+    rules:
+      - "Clean build directory before starting"
+      - "Run type checking first"
+      - "Run linting and auto-fix"
+      - "Run all test suites (unit, integration, E2E)"
+      - "Generate test coverage report"
+      - "Build application"
+      - "Validate build output"
+      - "Ensure all tests pass before deployment"
+
+  # Post-build Validation
+  - name: "post_build_validation"
+    description: "Validate build output and dependencies"
+    rules:
+      - "Check bundle size"
+      - "Verify all required files are present"
+      - "Validate environment variables"
+      - "Check for missing dependencies"
+
+# Linter Enforcement Rules
+linter_rules:
+  # TypeScript Rules
+  - name: "typescript_strict"
+    description: "Enforce strict TypeScript rules"
+    rules:
+      - "No explicit any types (@typescript-eslint/no-explicit-any: error)"
+      - "No unused variables (@typescript-eslint/no-unused-vars: error)"
+      - "No unused imports (import/no-unused-modules: error)"
+      - "No implicit any (noImplicitAny: true)"
+      - "No unused locals (noUnusedLocals: true)"
+      - "No unused parameters (noUnusedParameters: true)"
+
+  # Import Rules
+  - name: "import_strict"
+    description: "Enforce strict import rules"
+    rules:
+      - "No unused imports"
+      - "No duplicate imports"
+      - "Proper import ordering"
+      - "Type imports for TypeScript types"
+      - "Absolute imports for local modules"
+
+  # Code Quality Rules
+  - name: "code_quality_strict"
+    description: "Enforce code quality rules"
+    rules:
+      - "No dead code"
+      - "No unused exports"
+      - "No unused types"
+      - "No unused interfaces"
+      - "No unused functions" 

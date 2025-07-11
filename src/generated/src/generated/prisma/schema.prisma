@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String          @id @default(cuid())
+  email           String          @unique
+  name            String
+  password        String?
+  role            UserRole        @default(CONSULTANT)
+  pipedriveApiKey String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  emailVerified   DateTime?
+  image           String?
+  accounts        Account[]
+  sessions        Session[]
+  activities      Activity[]
+  contacts        Contact[]
+  pipedriveSyncs  PipedriveSync[]
+  campaigns       Campaign[]      @relation("CampaignUsers")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Campaign {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  sector      String?
+  theme       String?
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  activities  Activity[]
+  contacts    Contact[]  @relation("CampaignContacts")
+  users       User[]     @relation("CampaignUsers")
+
+  @@map("campaigns")
+}
+
+model Contact {
+  id                String     @id @default(cuid())
+  name              String
+  email             String?
+  phone             String?
+  organisation      String?
+  warmnessScore     Int        @default(0)
+  lastContacted     DateTime?
+  addedToCampaign   Boolean    @default(false)
+  pipedrivePersonId String?
+  pipedriveOrgId    String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  userId            String
+  activities        Activity[]
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns         Campaign[] @relation("CampaignContacts")
+
+  @@map("contacts")
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  type       ActivityType
+  subject    String?
+  note       String?
+  dueDate    DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  userId     String
+  contactId  String?
+  campaignId String?
+  campaign   Campaign?    @relation(fields: [campaignId], references: [id])
+  contact    Contact?     @relation(fields: [contactId], references: [id])
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
+
+model PipedriveSync {
+  id         String     @id @default(cuid())
+  entityType String
+  entityId   String
+  userId     String
+  status     SyncStatus @default(PENDING)
+  error      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("pipedrive_syncs")
+}
+
+enum UserRole {
+  CONSULTANT
+  GOLDEN_TICKET
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  LINKEDIN
+  REFERRAL
+  CONFERENCE
+}
+
+enum SyncStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  RETRY
+}

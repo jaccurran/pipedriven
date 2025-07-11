@@ -1,0 +1,484 @@
+import { prisma } from '@/lib/prisma'
+import type { User, Contact, Activity, ActivityType } from '@prisma/client'
+import { pipedriveConfig, getPipedriveApiUrl, validatePipedriveConfig } from '@/lib/pipedrive-config'
+
+interface PipedrivePerson {
+  id: number
+  name: string
+  email: string[]
+  phone: string[]
+  org_name?: string
+  org_id?: number
+  created: string
+  updated: string
+}
+
+interface PipedriveOrganization {
+  id: number
+  name: string
+  address?: string
+  created: string
+  updated: string
+}
+
+interface PipedriveActivity {
+  id: number
+  subject: string
+  type: string
+  due_date?: string
+  due_time?: string
+  duration?: string
+  note?: string
+  person_id?: number
+  org_id?: number
+  created: string
+  updated: string
+}
+
+interface PipedriveApiResponse<T> {
+  success: boolean
+  data: T
+  error?: string
+}
+
+export class PipedriveService {
+  private apiKey: string
+  private baseUrl: string
+
+  constructor(apiKey: string) {
+    if (!apiKey || apiKey.trim() === '') {
+      throw new Error('Pipedrive API key is required')
+    }
+    
+    // Validate configuration on service creation
+    const configErrors = validatePipedriveConfig()
+    if (configErrors.length > 0) {
+      throw new Error(`Invalid Pipedrive configuration: ${configErrors.join(', ')}`)
+    }
+    
+    this.apiKey = apiKey.trim()
+    this.baseUrl = getPipedriveApiUrl()
+  }
+
+  /**
+   * Test the Pipedrive API connection
+   */
+  async testConnection(): Promise<{ success: boolean; user?: any; error?: string }> {
+    const result = await this.makeApiRequest('/users/me')
+    
+    if (result.success) {
+      return {
+        success: true,
+        user: result.data?.data,
+      }
+    }
+    
+    return {
+      success: false,
+      error: result.error || 'Failed to connect to Pipedrive API',
+    }
+  }
+
+  /**
+   * Create or update a person in Pipedrive
+   */
+  async createOrUpdatePerson(contact: Contact): Promise<{ success: boolean; personId?: number; error?: string }> {
+    try {
+      // Check if person already exists
+      if (contact.pipedrivePersonId) {
+        return await this.updatePerson(contact)
+      }
+
+      const personData = this.sanitizeContactData(contact)
+
+      const result = await this.makeApiRequest('/persons', {
+        method: 'POST',
+        body: JSON.stringify(personData),
+      }, {
+        contactId: contact.id,
+        contactName: contact.name,
+        endpoint: '/persons',
+        method: 'POST',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to create person in Pipedrive',
+        }
+      }
+
+      const personId = result.data?.data?.id
+      if (!personId) {
+        console.error('Pipedrive API returned no person ID')
+        return {
+          success: false,
+          error: 'Invalid response from Pipedrive API',
+        }
+      }
+
+      // Update contact with Pipedrive person ID - only if API call succeeded
+      try {
+        await prisma.contact.update({
+          where: { id: contact.id },
+          data: { pipedrivePersonId: personId.toString() },
+        })
+      } catch (dbError) {
+        console.error('Database update failed after successful Pipedrive API call:', dbError)
+        return {
+          success: false,
+          error: 'Failed to create person in Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        personId,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to create person in Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Update an existing person in Pipedrive
+   */
+  private async updatePerson(contact: Contact): Promise<{ success: boolean; personId?: number; error?: string }> {
+    try {
+      const personData = this.sanitizeContactData(contact)
+
+      const result = await this.makeApiRequest(`/persons/${contact.pipedrivePersonId}`, {
+        method: 'PUT',
+        body: JSON.stringify(personData),
+      }, {
+        contactId: contact.id,
+        contactName: contact.name,
+        pipedrivePersonId: contact.pipedrivePersonId,
+        endpoint: `/persons/${contact.pipedrivePersonId}`,
+        method: 'PUT',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to update person in Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        personId: result.data?.data?.id,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to update person in Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Create an activity in Pipedrive
+   */
+  async createActivity(activity: Activity & { contact?: { pipedrivePersonId?: string | null } }): Promise<{ success: boolean; activityId?: number; error?: string }> {
+    try {
+      // Sanitize and validate activity data
+      const sanitizedSubject = pipedriveConfig.enableDataSanitization 
+        ? this.sanitizeString(activity.subject || 'Activity', pipedriveConfig.maxSubjectLength)
+        : (activity.subject || 'Activity')
+      const sanitizedNote = pipedriveConfig.enableDataSanitization 
+        ? this.sanitizeString(activity.note, pipedriveConfig.maxNoteLength)
+        : activity.note
+      
+      const activityData = {
+        subject: sanitizedSubject,
+        type: this.mapActivityType(activity.type),
+        due_date: activity.dueDate ? this.formatDate(activity.dueDate) : undefined,
+        due_time: activity.dueDate ? this.formatTime(activity.dueDate) : undefined,
+        note: sanitizedNote,
+        person_id: activity.contact?.pipedrivePersonId ? parseInt(activity.contact.pipedrivePersonId) : undefined,
+      }
+
+      const result = await this.makeApiRequest('/activities', {
+        method: 'POST',
+        body: JSON.stringify(activityData),
+      }, {
+        activityId: activity.id,
+        activityType: activity.type,
+        endpoint: '/activities',
+        method: 'POST',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to create activity in Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        activityId: result.data?.data?.id,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to create activity in Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get all persons from Pipedrive
+   */
+  async getPersons(): Promise<{ success: boolean; persons?: PipedrivePerson[]; error?: string }> {
+    try {
+      const result = await this.makeApiRequest('/persons', {}, {
+        endpoint: '/persons',
+        method: 'GET',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch persons from Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        persons: result.data?.data,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch persons from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get all organizations from Pipedrive
+   */
+  async getOrganizations(): Promise<{ success: boolean; organizations?: PipedriveOrganization[]; error?: string }> {
+    try {
+      const result = await this.makeApiRequest('/organizations', {}, {
+        endpoint: '/organizations',
+        method: 'GET',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch organizations from Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        organizations: result.data?.data,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch organizations from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Map internal activity type to Pipedrive activity type
+   */
+  private mapActivityType(type: ActivityType): string {
+    const typeMap: Record<ActivityType, string> = {
+      CALL: 'call',
+      EMAIL: 'email',
+      MEETING: 'meeting',
+      LINKEDIN: 'task',
+      REFERRAL: 'task',
+      CONFERENCE: 'meeting',
+    }
+    return typeMap[type] || 'task'
+  }
+
+  /**
+   * Format date for Pipedrive API
+   */
+  private formatDate(date: Date): string {
+    return date.toISOString().split('T')[0]
+  }
+
+  /**
+   * Format time for Pipedrive API
+   */
+  private formatTime(date: Date): string {
+    return date.toTimeString().split(' ')[0]
+  }
+
+  /**
+   * Sanitize string data to prevent XSS and ensure valid length
+   */
+  private sanitizeString(value: string | null | undefined, maxLength: number): string | undefined {
+    if (!value) return undefined
+    
+    // Remove HTML tags and scripts
+    const sanitized = value
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<[^>]*>/g, '')
+      .trim()
+    
+    // Truncate if too long
+    return sanitized.length > maxLength ? sanitized.substring(0, maxLength) : sanitized
+  }
+
+  /**
+   * Sanitize contact data before sending to Pipedrive
+   */
+  private sanitizeContactData(contact: Contact) {
+    if (!pipedriveConfig.enableDataSanitization) {
+      return {
+        name: contact.name || 'Unknown Contact',
+        email: contact.email ? [contact.email] : [],
+        phone: contact.phone ? [contact.phone] : [],
+        org_name: contact.organisation,
+      }
+    }
+    
+    return {
+      name: this.sanitizeString(contact.name, pipedriveConfig.maxNameLength) || 'Unknown Contact',
+      email: contact.email ? [this.sanitizeString(contact.email, pipedriveConfig.maxEmailLength)] : [],
+      phone: contact.phone ? [this.sanitizeString(contact.phone, pipedriveConfig.maxPhoneLength)] : [],
+      org_name: this.sanitizeString(contact.organisation, pipedriveConfig.maxOrgNameLength),
+    }
+  }
+
+  /**
+   * Make a safe API request with retry logic and error handling
+   */
+  private async makeApiRequest(
+    endpoint: string,
+    options: RequestInit = {},
+    context: Record<string, any> = {}
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    const url = `${this.baseUrl}${endpoint}`
+    const requestOptions: RequestInit = {
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    }
+
+    const maxRetries = pipedriveConfig.enableRetries ? pipedriveConfig.maxRetries : 0
+    
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      try {
+        const response = await fetch(url, requestOptions)
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          
+          // Handle specific error cases
+          if (response.status === 429 && pipedriveConfig.enableRateLimiting) {
+            const retryAfter = response.headers.get('retry-after')
+            console.error(`Pipedrive rate limit exceeded. Retry after ${retryAfter} seconds`)
+            return {
+              success: false,
+              error: 'Rate limit exceeded',
+            }
+          }
+          
+          if (response.status === 401) {
+            console.error('Pipedrive API key expired or invalid')
+            return {
+              success: false,
+              error: 'API key expired',
+            }
+          }
+
+          // Log detailed error information
+          if (pipedriveConfig.enableDetailedLogging) {
+            console.error('Pipedrive API error:', {
+              status: response.status,
+              statusText: response.statusText,
+              endpoint,
+              method: options.method || 'GET',
+              ...context,
+              ...errorData,
+            })
+          }
+
+          return {
+            success: false,
+            error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+          }
+        }
+
+        const data = await response.json()
+        return { success: true, data }
+
+      } catch (error) {
+        if (pipedriveConfig.enableDetailedLogging) {
+          console.error('Pipedrive API error:', error)
+        }
+        
+        if (attempt > maxRetries) {
+          return {
+            success: false,
+            error: 'Failed to connect to Pipedrive API',
+          }
+        }
+        
+        // Wait before retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, pipedriveConfig.retryDelay * attempt))
+      }
+    }
+
+    return {
+      success: false,
+      error: 'Max retries exceeded',
+    }
+  }
+}
+
+/**
+ * Factory function to create PipedriveService for a user
+ */
+export async function createPipedriveService(userId: string): Promise<PipedriveService | null> {
+  try {
+    // Validate user ID format
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      console.error('Invalid user ID provided to createPipedriveService')
+      return null
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { pipedriveApiKey: true },
+    })
+
+    if (!user) {
+      console.error(`User not found: ${userId}`)
+      return null
+    }
+
+    if (!user.pipedriveApiKey || user.pipedriveApiKey.trim() === '') {
+      console.error(`No Pipedrive API key configured for user: ${userId}`)
+      return null
+    }
+
+    return new PipedriveService(user.pipedriveApiKey)
+  } catch (error) {
+    console.error('Failed to create Pipedrive service:', error)
+    return null
+  }
+} 

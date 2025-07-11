@@ -1,0 +1,91 @@
+'use client'
+
+import React from 'react'
+import { cn } from '@/lib/utils'
+import { shadows, borderRadius } from '@/lib/design-tokens'
+
+export interface CardProps {
+  variant?: 'default' | 'elevated' | 'outlined'
+  padding?: 'sm' | 'md' | 'lg'
+  children: React.ReactNode
+  onClick?: () => void
+  className?: string
+}
+
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  (
+    {
+      variant = 'default',
+      padding = 'md',
+      children,
+      onClick,
+      className,
+      ...props
+    },
+    ref
+  ) => {
+    const baseClasses = cn(
+      // Base styles
+      'rounded-lg transition-all duration-200',
+      
+      // Padding variants
+      padding === 'sm' && 'p-4',
+      padding === 'md' && 'p-6',
+      padding === 'lg' && 'p-8',
+      
+      // Variant styles
+      variant === 'default' && [
+        'bg-white border border-gray-200',
+        'hover:border-gray-300',
+      ],
+      variant === 'elevated' && [
+        'bg-white border border-gray-200 shadow-lg',
+        'hover:shadow-xl hover:border-gray-300',
+      ],
+      variant === 'outlined' && [
+        'bg-transparent border-2 border-gray-200',
+        'hover:border-gray-300',
+      ],
+      
+      // Clickable styles
+      onClick && [
+        'cursor-pointer',
+        'hover:scale-[1.02]',
+        'active:scale-[0.98]',
+      ],
+      
+      className
+    )
+
+    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (onClick) {
+        e.preventDefault()
+        onClick()
+      }
+    }
+
+    return (
+      <div
+        ref={ref}
+        className={baseClasses}
+        onClick={handleClick}
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault()
+            onClick()
+          }
+        }}
+        data-testid="card"
+        {...props}
+      >
+        {children}
+      </div>
+    )
+  }
+)
+
+Card.displayName = 'Card'
+
+export { Card } 
