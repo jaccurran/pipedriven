@@ -160,13 +160,8 @@ describe('ContactDetailSlideover', () => {
       expect(screen.getByText('Acme Corp')).toBeInTheDocument()
       
       // Check warmness score
-      expect(screen.getByText('75')).toBeInTheDocument()
+      expect(screen.getByText('75/10')).toBeInTheDocument()
       expect(screen.getByText('Warmness Score')).toBeInTheDocument()
-      
-      // Check last contacted date
-      expect(screen.getByText('Last Contacted')).toBeInTheDocument()
-      const lastContactedElement = screen.getByText('Last Contacted').closest('div')
-      expect(lastContactedElement).toHaveTextContent('Jan 10, 2025')
     })
 
     it('handles missing contact information gracefully', () => {
@@ -194,10 +189,8 @@ describe('ContactDetailSlideover', () => {
 
       expect(screen.getByText('John Doe')).toBeInTheDocument()
       expect(screen.getByText('john.doe@example.com')).toBeInTheDocument()
-      expect(screen.getByText('No phone number')).toBeInTheDocument()
-      expect(screen.getByText('No organization')).toBeInTheDocument()
-      expect(screen.getByText('0')).toBeInTheDocument()
-      expect(screen.getByText('Never contacted')).toBeInTheDocument()
+      expect(screen.getAllByText('N/A')).toHaveLength(2) // Phone and Organization
+      expect(screen.getByText('0/10')).toBeInTheDocument()
     })
   })
 
@@ -239,8 +232,7 @@ describe('ContactDetailSlideover', () => {
       )
 
       expect(screen.getByText('Activity History')).toBeInTheDocument()
-      expect(screen.getByText('No activities yet')).toBeInTheDocument()
-      expect(screen.getByText('Start building your relationship by adding activities')).toBeInTheDocument()
+      expect(screen.getByText('No activities recorded yet.')).toBeInTheDocument()
     })
 
     it('displays activity details correctly', () => {
@@ -312,15 +304,12 @@ describe('ContactDetailSlideover', () => {
       )
 
       expect(screen.getByText('Quick Actions')).toBeInTheDocument()
-      expect(screen.getByText('Email Sent')).toBeInTheDocument()
-      expect(screen.getByText('Meeting Requested')).toBeInTheDocument()
-      expect(screen.getByText('Meeting Planned')).toBeInTheDocument()
-      expect(screen.getByText('Meeting Completed')).toBeInTheDocument()
-      expect(screen.getByText('Call Made')).toBeInTheDocument()
-      expect(screen.getByText('Other Actions')).toBeInTheDocument()
+      expect(screen.getAllByText('Email')).toHaveLength(2) // Label and button
+      expect(screen.getByText('Meeting Request')).toBeInTheDocument()
+      expect(screen.getByText('Meeting')).toBeInTheDocument()
     })
 
-    it('creates email sent activity when button is clicked', async () => {
+    it('creates email activity when button is clicked', async () => {
       const user = userEvent.setup()
       
       render(
@@ -337,18 +326,21 @@ describe('ContactDetailSlideover', () => {
         />
       )
 
-      const emailButton = screen.getByText('Email Sent')
-      await user.click(emailButton)
+      // Find the Email button specifically (not the label)
+      const emailButtons = screen.getAllByText('Email')
+      const emailButton = emailButtons.find(button => button.tagName === 'BUTTON' || button.closest('button'))
+      expect(emailButton).toBeInTheDocument()
+      await user.click(emailButton!)
 
       expect(mockOnActivityCreate).toHaveBeenCalledWith({
-        type: 'EMAIL_SENT',
-        title: 'Email Sent',
-        description: 'Email sent to contact',
+        type: 'EMAIL',
+        subject: 'Email Sent',
+        note: 'Email sent to contact',
         contactId: mockContact.id,
       })
     })
 
-    it('creates meeting requested activity when button is clicked', async () => {
+    it('creates meeting request activity when button is clicked', async () => {
       const user = userEvent.setup()
       
       render(
@@ -365,18 +357,18 @@ describe('ContactDetailSlideover', () => {
         />
       )
 
-      const meetingButton = screen.getByText('Meeting Requested')
+      const meetingButton = screen.getByText('Meeting Request')
       await user.click(meetingButton)
 
       expect(mockOnActivityCreate).toHaveBeenCalledWith({
-        type: 'MEETING_REQUESTED',
-        title: 'Meeting Requested',
-        description: 'Meeting requested with contact',
+        type: 'MEETING',
+        subject: 'Meeting Requested',
+        note: 'Meeting requested with contact',
         contactId: mockContact.id,
       })
     })
 
-    it('opens meeting planned modal when button is clicked', async () => {
+    it('creates meeting activity when button is clicked', async () => {
       const user = userEvent.setup()
       
       render(
@@ -393,37 +385,15 @@ describe('ContactDetailSlideover', () => {
         />
       )
 
-      const meetingPlannedButton = screen.getByText('Meeting Planned')
-      await user.click(meetingPlannedButton)
+      const meetingButton = screen.getByText('Meeting')
+      await user.click(meetingButton)
 
-      expect(screen.getAllByText('Schedule Meeting')).toHaveLength(2) // Title and button
-      expect(screen.getByLabelText('Meeting Date')).toBeInTheDocument()
-      expect(screen.getByLabelText('Meeting Time')).toBeInTheDocument()
-      expect(screen.getByLabelText('Meeting Notes')).toBeInTheDocument()
-    })
-
-    it('opens meeting completed modal when button is clicked', async () => {
-      const user = userEvent.setup()
-      
-      render(
-        <ContactDetailSlideover
-          isOpen={true}
-          contact={mockContact}
-          activities={mockActivities}
-          user={mockUser}
-          onClose={mockOnClose}
-          onEdit={mockOnEdit}
-          onActivityCreate={mockOnActivityCreate}
-          onActivityEdit={mockOnActivityEdit}
-          onActivityDelete={mockOnActivityDelete}
-        />
-      )
-
-      const meetingCompletedButton = screen.getByText('Meeting Completed')
-      await user.click(meetingCompletedButton)
-
-      expect(screen.getAllByText('Meeting Notes')).toHaveLength(2) // Title and label
-      expect(screen.getByText('Save Notes')).toBeInTheDocument()
+      expect(mockOnActivityCreate).toHaveBeenCalledWith({
+        type: 'MEETING',
+        subject: 'Meeting Scheduled',
+        note: 'Meeting scheduled with contact',
+        contactId: mockContact.id,
+      })
     })
   })
 
@@ -503,7 +473,7 @@ describe('ContactDetailSlideover', () => {
       await user.click(deleteButtons[0])
 
       expect(screen.getByText('Delete Activity')).toBeInTheDocument()
-      expect(screen.getByText('Are you sure you want to delete this activity?')).toBeInTheDocument()
+      expect(screen.getByText('Are you sure you want to delete this activity? This action cannot be undone.')).toBeInTheDocument()
       
       const confirmButton = screen.getByText('Delete')
       await user.click(confirmButton)
@@ -691,7 +661,7 @@ describe('ContactDetailSlideover', () => {
         />
       )
 
-      const warmnessScore = screen.getByText('75')
+      const warmnessScore = screen.getByText('75/10')
       expect(warmnessScore).toBeInTheDocument()
       
       // Check that the score has appropriate styling
@@ -700,7 +670,7 @@ describe('ContactDetailSlideover', () => {
     })
 
     it('displays different colors for different warmness levels', () => {
-      const coldContact = { ...mockContact, warmnessScore: 35 }
+      const coldContact = { ...mockContact, warmnessScore: 5 }
       
       render(
         <ContactDetailSlideover
@@ -716,7 +686,7 @@ describe('ContactDetailSlideover', () => {
         />
       )
 
-      const warmnessScore = screen.getByText('35')
+      const warmnessScore = screen.getByText('5/10')
       const scoreContainer = warmnessScore.closest('[data-testid="warmness-score"]')
       expect(scoreContainer).toHaveClass('text-yellow-600') // Medium warmness score
     })

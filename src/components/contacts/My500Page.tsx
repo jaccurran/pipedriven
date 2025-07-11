@@ -10,6 +10,8 @@ import {
 } from '@/lib/my-500-data'
 import { ActivityForm } from '@/components/activities/ActivityForm'
 import { Button, Modal } from '@/components/ui'
+import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
+import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 
 interface My500PageProps {
   contacts: ContactWithActivities[]
@@ -59,9 +61,45 @@ export function My500Page({ contacts }: My500PageProps) {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  const handleQuickAction = async (contact: ContactWithActivities, type: 'EMAIL' | 'CALL' | 'MEETING') => {
+  const handlePrimaryAction = async (contact: ContactWithActivities, type: ActionType) => {
     setSelectedContact(contact)
-    setActivityType(type)
+    // Map ActionType to activity type
+    const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
+      EMAIL: 'EMAIL',
+      MEETING_REQUEST: 'MEETING',
+      MEETING: 'MEETING'
+    }
+    setActivityType(activityTypeMap[type])
+    setShowActivityModal(true)
+    
+    // Fetch campaigns for the user
+    if (session?.user?.id && campaigns.length === 0) {
+      setLoadingCampaigns(true)
+      try {
+        const response = await fetch('/api/campaigns')
+        if (response.ok) {
+          const data = await response.json()
+          setCampaigns(data.campaigns || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch campaigns:', error)
+      } finally {
+        setLoadingCampaigns(false)
+      }
+    }
+  }
+
+  const handleSecondaryAction = async (type: SecondaryActionType) => {
+    if (!selectedContact) return
+    
+    setSelectedContact(selectedContact)
+    // Map SecondaryActionType to activity type
+    const activityTypeMap: Record<SecondaryActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
+      LINKEDIN: 'EMAIL', // LinkedIn activities as email type for now
+      PHONE_CALL: 'CALL',
+      CONFERENCE: 'MEETING'
+    }
+    setActivityType(activityTypeMap[type])
     setShowActivityModal(true)
     
     // Fetch campaigns for the user
@@ -177,30 +215,30 @@ export function My500Page({ contacts }: My500PageProps) {
                     )}
                   </div>
                   <div className="flex gap-1 mt-2 sm:mt-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleQuickAction(contact, 'EMAIL')}
+                    {/* Primary Actions - Always visible */}
+                    <QuickActionButton
+                      type="EMAIL"
+                      onClick={(type) => handlePrimaryAction(contact, type)}
+                      contactName={contact.name}
                       className="text-xs px-2 py-1"
-                    >
-                      📧 Email
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleQuickAction(contact, 'CALL')}
+                    />
+                    <QuickActionButton
+                      type="MEETING_REQUEST"
+                      onClick={(type) => handlePrimaryAction(contact, type)}
+                      contactName={contact.name}
                       className="text-xs px-2 py-1"
-                    >
-                      📞 Call
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleQuickAction(contact, 'MEETING')}
+                    />
+                    <QuickActionButton
+                      type="MEETING"
+                      onClick={(type) => handlePrimaryAction(contact, type)}
+                      contactName={contact.name}
                       className="text-xs px-2 py-1"
-                    >
-                      🤝 Meeting
-                    </Button>
+                    />
+                    {/* Secondary Actions - In ellipsis menu */}
+                    <ActionMenu
+                      onAction={handleSecondaryAction}
+                      contactName={contact.name}
+                    />
                   </div>
                 </div>
               </li>

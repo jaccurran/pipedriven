@@ -5,6 +5,8 @@ import { Contact } from '@prisma/client'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
+import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
+import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 
 interface ContactCardProps {
   contact: Contact
@@ -87,6 +89,30 @@ export function ContactCard({
     if (contact.warmnessScore >= 5) return 'Warm'
     if (contact.warmnessScore >= 3) return 'Lukewarm'
     return 'Cold'
+  }
+
+  const handlePrimaryAction = (type: ActionType) => {
+    if (onActivity) {
+      // Map ActionType to activity type
+      const activityTypeMap: Record<ActionType, string> = {
+        EMAIL: 'EMAIL',
+        MEETING_REQUEST: 'MEETING',
+        MEETING: 'MEETING'
+      }
+      onActivity(contact.id, activityTypeMap[type])
+    }
+  }
+
+  const handleSecondaryAction = (type: SecondaryActionType) => {
+    if (onActivity) {
+      // Map SecondaryActionType to activity type
+      const activityTypeMap: Record<SecondaryActionType, string> = {
+        LINKEDIN: 'EMAIL', // LinkedIn activities as email type for now
+        PHONE_CALL: 'CALL',
+        CONFERENCE: 'MEETING'
+      }
+      onActivity(contact.id, activityTypeMap[type])
+    }
   }
 
   return (
@@ -219,24 +245,30 @@ export function ContactCard({
         {/* Quick Actions */}
         {onActivity && (
           <div className="flex items-center space-x-2 pt-2 border-t border-gray-100">
-            <button
-              onClick={() => onActivity(contact.id, 'EMAIL')}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Send Email
-            </button>
-            <button
-              onClick={() => onActivity(contact.id, 'CALL')}
-              className="text-xs text-green-600 hover:text-green-800 font-medium"
-            >
-              Log Call
-            </button>
-            <button
-              onClick={() => onActivity(contact.id, 'MEETING')}
-              className="text-xs text-purple-600 hover:text-purple-800 font-medium"
-            >
-              Schedule Meeting
-            </button>
+            {/* Primary Actions - Always visible */}
+            <QuickActionButton
+              type="EMAIL"
+              onClick={handlePrimaryAction}
+              contactName={contact.name}
+              className="text-xs px-2 py-1"
+            />
+            <QuickActionButton
+              type="MEETING_REQUEST"
+              onClick={handlePrimaryAction}
+              contactName={contact.name}
+              className="text-xs px-2 py-1"
+            />
+            <QuickActionButton
+              type="MEETING"
+              onClick={handlePrimaryAction}
+              contactName={contact.name}
+              className="text-xs px-2 py-1"
+            />
+            {/* Secondary Actions - In ellipsis menu */}
+            <ActionMenu
+              onAction={handleSecondaryAction}
+              contactName={contact.name}
+            />
           </div>
         )}
       </div>

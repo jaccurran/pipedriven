@@ -1,12 +1,11 @@
 'use client'
 
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { Contact, Activity, User } from '@prisma/client'
 import { Slideover } from '@/components/ui/Slideover'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
-import { cn } from '@/lib/utils'
+import { Button, Input } from '@/components/ui'
+import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
+import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 
 interface ContactDetailSlideoverProps {
   isOpen: boolean
@@ -49,8 +48,7 @@ export function ContactDetailSlideover({
 }: ContactDetailSlideoverProps) {
   const [showMeetingPlannedModal, setShowMeetingPlannedModal] = useState(false)
   const [showMeetingCompletedModal, setShowMeetingCompletedModal] = useState(false)
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
-  const [activityToDelete, setActivityToDelete] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [meetingData, setMeetingData] = useState<MeetingData>({
     date: '',
     time: '',
@@ -58,28 +56,35 @@ export function ContactDetailSlideover({
   })
   const [meetingNotes, setMeetingNotes] = useState('')
 
-  // Sort activities by date (newest first)
   const sortedActivities = useMemo(() => {
-    return [...activities].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return [...activities].sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
   }, [activities])
 
-  // Get warmness score color
-  const getWarmnessColor = useCallback((score: number) => {
-    if (score >= 7) return 'text-green-600'
-    if (score >= 4) return 'text-yellow-600'
-    return 'text-red-600'
-  }, [])
-
-  // Format date for display
-  const formatDate = useCallback((date: Date) => {
+  const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
       month: 'short',
       day: 'numeric',
-      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     }).format(new Date(date))
-  }, [])
+  }
 
-  // Handle quick action button clicks
+  const getActivityIcon = (type: Activity['type']) => {
+    switch (type) {
+      case 'EMAIL':
+        return <span className="text-blue-500">📧</span>
+      case 'CALL':
+        return <span className="text-green-500">📞</span>
+      case 'MEETING':
+        return <span className="text-purple-500">🤝</span>
+      default:
+        return <span className="text-gray-500">📝</span>
+    }
+  }
+
   const handleQuickAction = useCallback((type: Activity['type'], subject: string, note: string) => {
     onActivityCreate({
       type,
@@ -89,97 +94,86 @@ export function ContactDetailSlideover({
     })
   }, [onActivityCreate, contact.id])
 
-  // Handle meeting planned
-  const handleMeetingPlanned = useCallback(() => {
-    if (meetingData.date && meetingData.time) {
-      const meetingDate = new Date(`${meetingData.date}T${meetingData.time}`)
-      onActivityCreate({
-        type: 'MEETING',
-        subject: 'Meeting Planned',
-        note: `Meeting scheduled for ${formatDate(meetingDate)}${meetingData.notes ? ` - ${meetingData.notes}` : ''}`,
-        contactId: contact.id,
-        dueDate: meetingDate,
-      })
-      setShowMeetingPlannedModal(false)
-      setMeetingData({ date: '', time: '', notes: '' })
+  const handlePrimaryAction = (type: ActionType) => {
+    // Map ActionType to activity type and create activity
+    const activityMap: Record<ActionType, { type: Activity['type']; subject: string; note: string }> = {
+      EMAIL: { type: 'EMAIL', subject: 'Email Sent', note: 'Email sent to contact' },
+      MEETING_REQUEST: { type: 'MEETING', subject: 'Meeting Requested', note: 'Meeting requested with contact' },
+      MEETING: { type: 'MEETING', subject: 'Meeting Scheduled', note: 'Meeting scheduled with contact' }
     }
-  }, [meetingData, onActivityCreate, contact.id, formatDate])
+    
+    const activity = activityMap[type]
+    handleQuickAction(activity.type, activity.subject, activity.note)
+  }
 
-  // Handle meeting completed
-  const handleMeetingCompleted = useCallback(() => {
-    if (meetingNotes.trim()) {
-      onActivityCreate({
-        type: 'MEETING',
-        subject: 'Meeting Completed',
-        note: meetingNotes,
-        contactId: contact.id,
-      })
-      setShowMeetingCompletedModal(false)
-      setMeetingNotes('')
+  const handleSecondaryAction = (type: SecondaryActionType) => {
+    // Map SecondaryActionType to activity type and create activity
+    const activityMap: Record<SecondaryActionType, { type: Activity['type']; subject: string; note: string }> = {
+      LINKEDIN: { type: 'EMAIL', subject: 'LinkedIn Activity', note: 'LinkedIn activity with contact' },
+      PHONE_CALL: { type: 'CALL', subject: 'Call Made', note: 'Call made to contact' },
+      CONFERENCE: { type: 'MEETING', subject: 'Conference Call', note: 'Conference call with contact' }
     }
-  }, [meetingNotes, onActivityCreate, contact.id])
+    
+    const activity = activityMap[type]
+    handleQuickAction(activity.type, activity.subject, activity.note)
+  }
 
-  // Handle activity deletion
-  const handleDeleteActivity = useCallback((activityId: string) => {
-    setActivityToDelete(activityId)
-    setShowDeleteConfirmModal(true)
-  }, [])
+  const handleMeetingPlanned = () => {
+    const subject = `Meeting Planned for ${meetingData.date} at ${meetingData.time}`
+    const note = meetingData.notes || 'Meeting scheduled'
+    
+    onActivityCreate({
+      type: 'MEETING',
+      subject,
+      note,
+      contactId: contact.id,
+      dueDate: new Date(`${meetingData.date}T${meetingData.time}`),
+    })
+    
+    setShowMeetingPlannedModal(false)
+    setMeetingData({ date: '', time: '', notes: '' })
+  }
 
-  const confirmDeleteActivity = useCallback(() => {
-    if (activityToDelete) {
-      onActivityDelete(activityToDelete)
-      setShowDeleteConfirmModal(false)
-      setActivityToDelete(null)
+  const handleMeetingCompleted = () => {
+    onActivityCreate({
+      type: 'MEETING',
+      subject: 'Meeting Completed',
+      note: meetingNotes || 'Meeting completed successfully',
+      contactId: contact.id,
+    })
+    
+    setShowMeetingCompletedModal(false)
+    setMeetingNotes('')
+  }
+
+  const handleDeleteActivity = (activityId: string) => {
+    setShowDeleteConfirm(activityId)
+  }
+
+  const confirmDeleteActivity = () => {
+    if (showDeleteConfirm) {
+      onActivityDelete(showDeleteConfirm)
+      setShowDeleteConfirm(null)
     }
-  }, [activityToDelete, onActivityDelete])
+  }
 
-  // Get activity icon
-  const getActivityIcon = useCallback((type: Activity['type']) => {
-    switch (type) {
-      case 'EMAIL':
-        return (
-          <svg className="h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        )
-      case 'MEETING':
-        return (
-          <svg className="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        )
-      case 'CALL':
-        return (
-          <svg className="h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-          </svg>
-        )
-      case 'LINKEDIN':
-        return (
-          <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-          </svg>
-        )
-      case 'REFERRAL':
-        return (
-          <svg className="h-5 w-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        )
-      case 'CONFERENCE':
-        return (
-          <svg className="h-5 w-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-        )
-      default:
-        return (
-          <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        )
-    }
-  }, [])
+  const getWarmnessColor = (score: number) => {
+    if (score >= 7) return 'text-green-600'
+    if (score >= 4) return 'text-yellow-600'
+    return 'text-red-600'
+  }
+
+  const getWarmnessLabel = (score: number) => {
+    if (score >= 7) return 'Warm'
+    if (score >= 4) return 'Lukewarm'
+    return 'Cold'
+  }
+
+  const getWarmnessBgColor = (score: number) => {
+    if (score >= 7) return 'bg-green-100 text-green-800'
+    if (score >= 4) return 'bg-yellow-100 text-yellow-800'
+    return 'bg-red-100 text-red-800'
+  }
 
   return (
     <>
@@ -187,7 +181,6 @@ export function ContactDetailSlideover({
         isOpen={isOpen}
         onClose={onClose}
         title="Contact Details"
-        size="lg"
         className={className}
       >
         <div className="space-y-6">
@@ -203,7 +196,7 @@ export function ContactDetailSlideover({
                 Edit Contact
               </Button>
             </div>
-
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Email</label>
@@ -212,51 +205,27 @@ export function ContactDetailSlideover({
               
               <div>
                 <label className="block text-sm font-medium text-gray-700">Phone</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {contact.phone || 'No phone number'}
-                </p>
+                <p className="mt-1 text-sm text-gray-900">{contact.phone || 'N/A'}</p>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700">Organization</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {contact.organisation || 'No organization'}
-                </p>
+                <p className="mt-1 text-sm text-gray-900">{contact.organisation || 'N/A'}</p>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700">Warmness Score</label>
                 <div className="mt-1 flex items-center space-x-2">
                   <span 
-                    className={cn(
-                      'text-lg font-semibold',
-                      getWarmnessColor(contact.warmnessScore)
-                    )}
+                    className={`text-lg font-semibold ${getWarmnessColor(contact.warmnessScore)}`}
                     data-testid="warmness-score"
                   >
                     {contact.warmnessScore}/10
                   </span>
-                  <Badge 
-                    variant={contact.warmnessScore >= 7 ? 'success' : contact.warmnessScore >= 4 ? 'warning' : 'danger'}
-                    size="sm"
-                  >
-                    {contact.warmnessScore >= 7 ? 'Warm' : contact.warmnessScore >= 4 ? 'Warming' : 'Cold'}
-                  </Badge>
+                  <span className={`inline-flex items-center justify-center font-medium rounded-full transition-colors duration-200 px-2 py-0.5 text-xs ${getWarmnessBgColor(contact.warmnessScore)}`}>
+                    {getWarmnessLabel(contact.warmnessScore)}
+                  </span>
                 </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Last Contacted</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {contact.lastContacted ? formatDate(contact.lastContacted) : 'Never contacted'}
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Added to Campaign</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {contact.addedToCampaign ? 'Yes' : 'No'}
-                </p>
               </div>
             </div>
           </div>
@@ -264,54 +233,31 @@ export function ContactDetailSlideover({
           {/* Quick Actions */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900">Quick Actions</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleQuickAction('EMAIL', 'Email Sent', 'Email sent to contact')}
-              >
-                Email Sent
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleQuickAction('MEETING', 'Meeting Requested', 'Meeting requested with contact')}
-              >
-                Meeting Requested
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowMeetingPlannedModal(true)}
-              >
-                Schedule Meeting
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleQuickAction('CALL', 'Call Made', 'Call made to contact')}
-              >
-                Call Made
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowMeetingCompletedModal(true)}
-              >
-                Meeting Completed
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleQuickAction('LINKEDIN', 'LinkedIn Activity', 'LinkedIn activity with contact')}
-              >
-                LinkedIn Activity
-              </Button>
+            <div className="flex flex-wrap gap-2">
+              {/* Primary Actions - Always visible */}
+              <QuickActionButton
+                type="EMAIL"
+                onClick={handlePrimaryAction}
+                contactName={contact.name}
+                className="text-xs px-2 py-1"
+              />
+              <QuickActionButton
+                type="MEETING_REQUEST"
+                onClick={handlePrimaryAction}
+                contactName={contact.name}
+                className="text-xs px-2 py-1"
+              />
+              <QuickActionButton
+                type="MEETING"
+                onClick={handlePrimaryAction}
+                contactName={contact.name}
+                className="text-xs px-2 py-1"
+              />
+              {/* Secondary Actions - In ellipsis menu */}
+              <ActionMenu
+                onAction={handleSecondaryAction}
+                contactName={contact.name}
+              />
             </div>
           </div>
 
@@ -323,6 +269,7 @@ export function ContactDetailSlideover({
                 <div
                   key={activity.id}
                   className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg"
+                  data-testid="activity-item"
                 >
                   <div className="flex-shrink-0 mt-1">
                     {getActivityIcon(activity.type)}
@@ -464,11 +411,8 @@ export function ContactDetailSlideover({
               >
                 Cancel
               </Button>
-              <Button
-                onClick={handleMeetingCompleted}
-                disabled={!meetingNotes.trim()}
-              >
-                Complete
+              <Button onClick={handleMeetingCompleted}>
+                Save Notes
               </Button>
             </div>
           </div>
@@ -476,7 +420,7 @@ export function ContactDetailSlideover({
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirmModal && (
+      {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Delete Activity</h3>
@@ -487,12 +431,12 @@ export function ContactDetailSlideover({
             <div className="flex items-center justify-end space-x-3">
               <Button
                 variant="outline"
-                onClick={() => setShowDeleteConfirmModal(false)}
+                onClick={() => setShowDeleteConfirm(null)}
               >
                 Cancel
               </Button>
               <Button
-                variant="danger"
+                variant="destructive"
                 onClick={confirmDeleteActivity}
               >
                 Delete

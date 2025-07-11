@@ -21,6 +21,8 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const modalRef = useRef<HTMLDivElement>(null)
+  const [editingContact, setEditingContact] = useState(false)
+  const [editedContactName, setEditedContactName] = useState(contactName || '')
 
   // Close on outside click
   useEffect(() => {
@@ -111,8 +113,18 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
   }
 
   const handleContactEdit = () => {
-    // TODO: Implement contact editing functionality
-    console.log('Edit contact:', contactName)
+    setEditingContact(true)
+  }
+
+  const handleContactEditSave = () => {
+    setEditingContact(false)
+    // Update the displayed contact name
+    // In a real app, this would also update the backend
+  }
+
+  const handleContactEditCancel = () => {
+    setEditingContact(false)
+    setEditedContactName(contactName || '')
   }
 
   return (
@@ -215,20 +227,49 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
               <label htmlFor="contact-name" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
                 Contact
               </label>
-              <button
-                onClick={handleContactEdit}
-                style={{
-                  background: 'none',
-                  border: '1px solid #ddd',
-                  padding: '0.5rem',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                  width: '100%',
-                  textAlign: 'left',
-                }}
-              >
-                {contactName || 'No contact selected'}
-              </button>
+              {editingContact ? (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    id="contact-name"
+                    aria-label="Edit contact name"
+                    type="text"
+                    value={editedContactName}
+                    onChange={e => setEditedContactName(e.target.value)}
+                    style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '0.25rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleContactEditSave}
+                    aria-label="Save contact"
+                    style={{ padding: '0.5rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
+                  >
+                    Save Contact
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleContactEditCancel}
+                    aria-label="Cancel edit"
+                    style={{ padding: '0.5rem', background: 'white', color: '#333', border: '1px solid #ddd', borderRadius: '0.25rem', cursor: 'pointer' }}
+                  >
+                    Cancel Edit
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleContactEdit}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #ddd',
+                    padding: '0.5rem',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    width: '100%',
+                    textAlign: 'left',
+                  }}
+                >
+                  {editedContactName || 'No contact selected'}
+                </button>
+              )}
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
