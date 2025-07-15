@@ -4,7 +4,7 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 
 export interface InputProps {
-  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url'
+  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'date'
   label?: string
   placeholder?: string
   error?: string
@@ -16,6 +16,7 @@ export interface InputProps {
   id?: string
   name?: string
   autoComplete?: string
+  maxLength?: number
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -33,12 +34,15 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       id,
       name,
       autoComplete,
+      maxLength,
       ...props
     },
     ref
   ) => {
-    const inputId = id || name || `input-${Math.random().toString(36).substr(2, 9)}`
+    const inputId = id || name || `input-${React.useId()}`
     const errorId = `${inputId}-error`
+
+
 
     const inputClasses = cn(
       // Base styles

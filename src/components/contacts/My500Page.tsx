@@ -25,12 +25,14 @@ export function My500Page({ contacts }: My500PageProps) {
   const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
   const [loadingCampaigns, setLoadingCampaigns] = useState(false)
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
 
   const filteredContacts = useMemo(() => {
     return contacts.filter(c =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.email?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      (c.organisation?.toLowerCase().includes(search.toLowerCase()) ?? false)
+      (c.organization?.name.toLowerCase().includes(search.toLowerCase()) ?? false)
     )
   }, [contacts, search])
 
@@ -59,6 +61,15 @@ export function My500Page({ contacts }: My500PageProps) {
     const lastContacted = new Date(contact.lastContacted)
     const diffTime = Math.abs(now.getTime() - lastContacted.getTime())
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  }
+
+  const isRecentlyContacted = (contact: ContactWithActivities): boolean => {
+    if (!contact.lastContacted) return false
+    const now = new Date()
+    const lastContacted = new Date(contact.lastContacted)
+    const diffTime = now.getTime() - lastContacted.getTime()
+    const diffHours = diffTime / (1000 * 60 * 60)
+    return diffHours <= 24 // Within last 24 hours
   }
 
   const handlePrimaryAction = async (contact: ContactWithActivities, type: ActionType) => {
@@ -127,7 +138,7 @@ export function My500Page({ contacts }: My500PageProps) {
         contactId: selectedContact?.id || activityData.contactId || null,
         campaignId: activityData.campaignId || null,
         note: activityData.note || null,
-        dueDate: activityData.dueDate || null,
+        dueDate: activityData.dueDate ? activityData.dueDate.toISOString() : null,
       }
 
       // Submit activity to API
@@ -140,8 +151,28 @@ export function My500Page({ contacts }: My500PageProps) {
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to create activity: ${response.statusText}`)
+        let errorData = {}
+        try {
+          const responseText = await response.text()
+          errorData = responseText ? JSON.parse(responseText) : {}
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError)
+          errorData = { error: 'Failed to parse error response' }
+        }
+        
+        throw new Error(`Failed to create activity: ${response.status} ${response.statusText} - ${errorData.details || errorData.error || 'Unknown error'}`)
       }
+
+      // Show success message
+      const successMessage = `Activity "${cleanedData.subject}" logged successfully for ${selectedContact?.name}`
+      setSuccessMessage(successMessage)
+      setShowSuccessMessage(true)
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => {
+        setShowSuccessMessage(false)
+        setSuccessMessage('')
+      }, 3000)
 
       // Close the modal
       setShowActivityModal(false)
@@ -151,7 +182,7 @@ export function My500Page({ contacts }: My500PageProps) {
       window.location.reload()
     } catch (error) {
       console.error('Failed to log activity:', error)
-      // TODO: Show error message to user
+      alert(`Failed to log activity: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -192,7 +223,7 @@ export function My500Page({ contacts }: My500PageProps) {
                     <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium uppercase border ${getPriorityColor(priority)}`}>{priority}</span>
                   </div>
                   <div className="text-sm text-gray-500 truncate">
-                    {contact.organisation && <span>{contact.organisation} &middot; </span>}
+                    {contact.organization && <span>{contact.organization.name} &middot; </span>}
                     {contact.email}
                   </div>
                   {attentionNeeded && (
@@ -212,6 +243,14 @@ export function My500Page({ contacts }: My500PageProps) {
                       <span>{daysSinceContact} days since last contact</span>
                     ) : (
                       <span>Never contacted</span>
+                    )}
+                    {isRecentlyContacted(contact) && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Recently contacted
+                      </span>
                     )}
                   </div>
                   <div className="flex gap-1 mt-2 sm:mt-0">
@@ -269,6 +308,16 @@ export function My500Page({ contacts }: My500PageProps) {
           />
         )}
       </Modal>
+
+      {/* Success Message Toast */}
+      {showSuccessMessage && (
+        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>{successMessage}</span>
+        </div>
+      )}
     </div>
   )
 } 

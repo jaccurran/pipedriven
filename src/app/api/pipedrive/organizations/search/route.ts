@@ -1,0 +1,122 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { PipedriveService } from '@/server/services/pipedriveService';
+
+// In-memory cache for search results (per user)
+const searchCache = new Map<string, { results: any[]; timestamp: number }>();
+const userRateLimits = new Map<string, { count: number; resetTime: number }>();
+
+// Cache TTL: 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
+// Rate limit: 1 request per second per user
+const RATE_LIMIT_WINDOW = 1000; // 1 second
+const RATE_LIMIT_MAX = 1; // 1 request per window
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
+
+    const { query } = body;
+    // Validate query
+    if (!query || typeof query !== 'string') {
+      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+    }
+    if (query.trim().length < 3) {
+      return NextResponse.json({ 
+        error: 'Query must be at least 3 characters long',
+        results: [] 
+      }, { status: 400 });
+    }
+
+    const userId = session.user.email;
+    const cacheKey = `${userId}:${query.toLowerCase().trim()}`;
+
+    // Check cache first
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json({ 
+        results: cached.results,
+        cached: true 
+      });
+    }
+
+    // Check rate limit
+    const now = Date.now();
+    const userLimit = userRateLimits.get(userId);
+    if (userLimit && now < userLimit.resetTime) {
+      if (userLimit.count >= RATE_LIMIT_MAX) {
+        return NextResponse.json({ 
+          error: 'Rate limit exceeded. Please wait before searching again.',
+          retryAfter: Math.ceil((userLimit.resetTime - now) / 1000)
+        }, { status: 429 });
+      }
+      userLimit.count++;
+    } else {
+      userRateLimits.set(userId, {
+        count: 1,
+        resetTime: now + RATE_LIMIT_WINDOW
+      });
+    }
+
+    // Get user's Pipedrive API key
+    const { prisma } = await import('@/lib/prisma');
+    const user = await prisma.user.findUnique({
+      where: { email: userId },
+      select: { pipedriveApiKey: true }
+    });
+
+    if (!user?.pipedriveApiKey) {
+      return NextResponse.json({ 
+        error: 'Pipedrive API key not configured',
+        results: [] 
+      }, { status: 400 });
+    }
+
+    // Search Pipedrive organizations
+    const pipedriveService = new PipedriveService(user.pipedriveApiKey);
+    let results: any[] = [];
+    try {
+      results = await pipedriveService.searchOrganizations(query);
+    } catch (error) {
+      // Gracefully handle Pipedrive errors
+      results = [];
+    }
+
+    // Cache the results
+    searchCache.set(cacheKey, {
+      results,
+      timestamp: now
+    });
+
+    // Clean up old cache entries (keep only last 100 entries)
+    if (searchCache.size > 100) {
+      const entries = Array.from(searchCache.entries());
+      entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
+      const toDelete = entries.slice(100);
+      toDelete.forEach(([key]) => searchCache.delete(key));
+    }
+
+    // Clean up old rate limit entries
+    const oldRateLimits = Array.from(userRateLimits.entries())
+      .filter(([_, limit]) => now > limit.resetTime);
+    oldRateLimits.forEach(([key]) => userRateLimits.delete(key));
+
+    return NextResponse.json({ 
+      results,
+      cached: false 
+    });
+  } catch (error) {
+    return NextResponse.json({ error: 'Internal server error', results: [] }, { status: 500 });
+  }
+} 

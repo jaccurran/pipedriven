@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { colors } from '@/lib/design-tokens'
 
 export interface BadgeProps {
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'outline'
+  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'outline' | 'secondary'
   size?: 'sm' | 'md' | 'lg'
   children: React.ReactNode
   className?: string
@@ -57,6 +57,10 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
         'bg-transparent text-gray-600',
         'border border-gray-300',
         'hover:bg-gray-50',
+      ],
+      variant === 'secondary' && [
+        'bg-gray-200 text-gray-700',
+        'hover:bg-gray-300',
       ],
       
       className

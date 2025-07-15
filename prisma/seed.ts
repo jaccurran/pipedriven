@@ -4,6 +4,22 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient({ log: ['query', 'info', 'warn', 'error'] })
 
 async function main() {
+  console.log('🧹 Clearing all tables...')
+  
+  // Clear all tables in the correct order (respecting foreign key constraints)
+  // Start with tables that have foreign key dependencies
+  await prisma.activity.deleteMany({})
+  await prisma.pipedriveSync.deleteMany({})
+  await prisma.contact.deleteMany({})
+  await prisma.organization.deleteMany({})
+  await prisma.campaign.deleteMany({})
+  await prisma.session.deleteMany({})
+  await prisma.account.deleteMany({})
+  await prisma.verificationToken.deleteMany({})
+  await prisma.user.deleteMany({})
+  
+  console.log('✅ All tables cleared')
+  
   const hashedPassword = await bcrypt.hash('password123', 12)
   
   const users = [
@@ -36,6 +52,14 @@ async function main() {
 
   // Get John Curran for sample data
   const johnCurran = createdUsers.find(user => user.email === 'john@the4oc.com')!
+  
+  // Set the real Pipedrive API key for John Curran
+  await prisma.user.update({
+    where: { id: johnCurran.id },
+    data: {
+      pipedriveApiKey: '0cb67c6e2ae346d90ecee11df979ae433a07a256'
+    }
+  })
 
   // Create sample campaigns
   const campaigns = [
@@ -87,13 +111,75 @@ async function main() {
     createdCampaigns.push(createdCampaign)
   }
 
-  // Create sample contacts
+  // Create organizations first
+  const organizations = [
+    {
+      name: 'TechCorp Solutions',
+      normalizedName: 'techcorp solutions',
+      industry: 'Technology',
+      size: '51-200',
+      website: 'https://techcorp.com',
+      address: '123 Tech Street, London, UK',
+      country: 'United Kingdom',
+      city: 'London',
+    },
+    {
+      name: 'Innovate Ltd',
+      normalizedName: 'innovate ltd',
+      industry: 'Consulting',
+      size: '11-50',
+      website: 'https://innovate.co.uk',
+      address: '456 Innovation Ave, Manchester, UK',
+      country: 'United Kingdom',
+      city: 'Manchester',
+    },
+    {
+      name: 'Startup.io',
+      normalizedName: 'startup io',
+      industry: 'Technology',
+      size: '1-10',
+      website: 'https://startup.io',
+      address: '789 Startup Lane, Bristol, UK',
+      country: 'United Kingdom',
+      city: 'Bristol',
+    },
+    {
+      name: 'Enterprise Solutions',
+      normalizedName: 'enterprise solutions',
+      industry: 'Enterprise Software',
+      size: '201-500',
+      website: 'https://enterprise.com',
+      address: '321 Enterprise Blvd, Edinburgh, UK',
+      country: 'United Kingdom',
+      city: 'Edinburgh',
+    },
+    {
+      name: 'Growth Co',
+      normalizedName: 'growth co',
+      industry: 'Marketing',
+      size: '11-50',
+      website: 'https://growth.co',
+      address: '654 Growth Road, Birmingham, UK',
+      country: 'United Kingdom',
+      city: 'Birmingham',
+    }
+  ]
+
+  const createdOrganizations = []
+  for (const org of organizations) {
+    const createdOrg = await prisma.organization.create({
+      data: org
+    })
+    createdOrganizations.push(createdOrg)
+  }
+
+  // Create sample contacts with organization links
   const contacts = [
     {
       name: 'Sarah Johnson',
       email: 'sarah.johnson@techcorp.com',
       phone: '+44 20 7123 4567',
-      organisation: 'TechCorp Solutions',
+      organization: { connect: { id: createdOrganizations[0].id } }, // TechCorp Solutions
       warmnessScore: 7,
       lastContacted: new Date('2025-01-10'),
       addedToCampaign: true,
@@ -102,7 +188,7 @@ async function main() {
       name: 'Michael Chen',
       email: 'michael.chen@innovate.co.uk',
       phone: '+44 20 7123 4568',
-      organisation: 'Innovate Ltd',
+      organization: { connect: { id: createdOrganizations[1].id } }, // Innovate Ltd
       warmnessScore: 5,
       lastContacted: new Date('2025-01-08'),
       addedToCampaign: true,
@@ -111,7 +197,7 @@ async function main() {
       name: 'Emma Thompson',
       email: 'emma.thompson@startup.io',
       phone: '+44 20 7123 4569',
-      organisation: 'Startup.io',
+      organization: { connect: { id: createdOrganizations[2].id } }, // Startup.io
       warmnessScore: 3,
       lastContacted: new Date('2025-01-05'),
       addedToCampaign: false,
@@ -120,7 +206,7 @@ async function main() {
       name: 'David Rodriguez',
       email: 'david.rodriguez@enterprise.com',
       phone: '+44 20 7123 4570',
-      organisation: 'Enterprise Solutions',
+      organization: { connect: { id: createdOrganizations[3].id } }, // Enterprise Solutions
       warmnessScore: 8,
       lastContacted: new Date('2025-01-12'),
       addedToCampaign: true,
@@ -129,7 +215,7 @@ async function main() {
       name: 'Lisa Wang',
       email: 'lisa.wang@growth.co',
       phone: '+44 20 7123 4571',
-      organisation: 'Growth Co',
+      organization: { connect: { id: createdOrganizations[4].id } }, // Growth Co
       warmnessScore: 4,
       lastContacted: new Date('2025-01-03'),
       addedToCampaign: false,
@@ -152,6 +238,29 @@ async function main() {
       }
     })
     createdContacts.push(createdContact)
+  }
+
+  // Update organization stats after creating contacts
+  for (const org of createdOrganizations) {
+    const contactCount = await prisma.contact.count({
+      where: { organizationId: org.id }
+    })
+    
+    const lastActivity = await prisma.activity.findFirst({
+      where: {
+        contact: { organizationId: org.id }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    })
+    
+    await prisma.organization.update({
+      where: { id: org.id },
+      data: {
+        contactCount,
+        lastActivity: lastActivity?.createdAt
+      }
+    })
   }
 
   // Create sample activities
@@ -240,9 +349,30 @@ async function main() {
     })
   }
 
-  console.log('✅ Seed complete!')
+  // Update organization stats again after creating activities
+  for (const org of createdOrganizations) {
+    const lastActivity = await prisma.activity.findFirst({
+      where: {
+        contact: { organizationId: org.id }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    })
+    
+    if (lastActivity) {
+      await prisma.organization.update({
+        where: { id: org.id },
+        data: {
+          lastActivity: lastActivity.createdAt
+        }
+      })
+    }
+  }
+
+  console.log('\n✅ Seed complete!')
   console.log(`📊 Created ${createdUsers.length} users`)
   console.log(`🎯 Created ${createdCampaigns.length} campaigns`)
+  console.log(`🏢 Created ${createdOrganizations.length} organizations`)
   console.log(`👥 Created ${createdContacts.length} contacts`)
   console.log(`📝 Created ${activities.length} activities`)
   console.log('\n🔑 Login credentials:')

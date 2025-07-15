@@ -95,7 +95,22 @@ describe('/api/campaigns/[id]/assign-contacts', () => {
       // Assert
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data).toEqual(campaignWithContacts)
+      
+      // Convert Date objects to strings for comparison since API serializes dates
+      const expectedData = {
+        ...campaignWithContacts,
+        startDate: '2024-01-01T00:00:00.000Z',
+        endDate: '2024-03-31T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        contacts: campaignWithContacts.contacts.map(contact => ({
+          ...contact,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        })),
+      }
+      
+      expect(data).toEqual(expectedData)
       expect(mockCampaignServiceInstance.assignContactsToCampaign).toHaveBeenCalledWith('campaign-123', contactIds)
     })
 
@@ -282,7 +297,22 @@ describe('/api/campaigns/[id]/assign-contacts', () => {
       // Assert
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data).toEqual(campaignWithRemainingContacts)
+      
+      // Convert Date objects to strings for comparison since API serializes dates
+      const expectedData = {
+        ...campaignWithRemainingContacts,
+        startDate: '2024-01-01T00:00:00.000Z',
+        endDate: '2024-03-31T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        contacts: campaignWithRemainingContacts.contacts.map(contact => ({
+          ...contact,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        })),
+      }
+      
+      expect(data).toEqual(expectedData)
       expect(mockCampaignServiceInstance.removeContactsFromCampaign).toHaveBeenCalledWith('campaign-123', contactIds)
     })
 

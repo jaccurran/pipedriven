@@ -1,7 +1,9 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ActivityForm } from '@/components/activities/ActivityForm'
+import { within } from '@testing-library/react'
 
 const mockContacts = [
   { id: 'contact-1', name: 'John Doe', organisation: 'Tech Corp' },
@@ -18,6 +20,8 @@ const mockOnSubmit = vi.fn()
 describe('ActivityForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Clean up the DOM to prevent multiple elements
+    document.body.innerHTML = ''
   })
 
   afterEach(() => {
@@ -38,12 +42,14 @@ describe('ActivityForm', () => {
     expect(screen.getByLabelText('Activity Type')).toBeInTheDocument()
     expect(screen.getByLabelText('Subject *')).toBeInTheDocument()
     expect(screen.getByLabelText('Note (Optional)')).toBeInTheDocument()
-    expect(screen.getByLabelText('Due Date (Optional)')).toBeInTheDocument()
-    expect(screen.getByLabelText('Contact (Optional)')).toBeInTheDocument()
+    expect(screen.getByText('Due Date (Optional)')).toBeInTheDocument()
+    expect(screen.getByTestId('activity-contact')).toBeInTheDocument()
     expect(screen.getByLabelText('Campaign (Optional)')).toBeInTheDocument()
   })
 
-  it('should display activity type options', () => {
+  it('should display activity type options', async () => {
+    const user = userEvent.setup()
+    
     render(
       <ActivityForm
         userId="user-1"
@@ -53,19 +59,28 @@ describe('ActivityForm', () => {
       />
     )
 
-    const typeSelect = screen.getByLabelText('Activity Type')
-    expect(typeSelect).toHaveValue('CALL')
+    // Open activity type dropdown to see options
+    const activityTypeButton = screen.getByRole('button', { name: /Call/ })
+    await user.click(activityTypeButton)
     
-    // Check that all activity types are available
-    expect(screen.getByText('📞 Call')).toBeInTheDocument()
-    expect(screen.getByText('📧 Email')).toBeInTheDocument()
-    expect(screen.getByText('🤝 Meeting')).toBeInTheDocument()
-    expect(screen.getByText('💼 LinkedIn')).toBeInTheDocument()
-    expect(screen.getByText('👥 Referral')).toBeInTheDocument()
-    expect(screen.getByText('🎤 Conference')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    // Get all options and check for activity type labels
+    const options = screen.getAllByRole('option')
+    const optionTexts = options.map(opt => opt.textContent)
+    expect(optionTexts.some(text => text?.includes('📞 Call'))).toBe(true)
+    expect(optionTexts.some(text => text?.includes('📧 Email'))).toBe(true)
+    expect(optionTexts.some(text => text?.includes('🤝 Meeting'))).toBe(true)
+    expect(optionTexts.some(text => text?.includes('💼 LinkedIn'))).toBe(true)
+    expect(optionTexts.some(text => text?.includes('👥 Referral'))).toBe(true)
+    expect(optionTexts.some(text => text?.includes('🎤 Conference'))).toBe(true)
   })
 
-  it('should display contact options', () => {
+  it('should display contact options', async () => {
+    const user = userEvent.setup()
+    
     render(
       <ActivityForm
         userId="user-1"
@@ -75,15 +90,24 @@ describe('ActivityForm', () => {
       />
     )
 
-    const contactSelect = screen.getByLabelText('Contact (Optional)')
-    expect(contactSelect).toHaveValue('')
+    // Open contact dropdown to see options
+    const contactButton = screen.getByRole('button', { name: /Select a contact/ })
+    await user.click(contactButton)
     
-    // Check that contacts are available
-    expect(screen.getByText('John Doe (Tech Corp)')).toBeInTheDocument()
-    expect(screen.getByText('Jane Smith (Startup Inc)')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    // Get all options and check for contact names and organisations
+    const options = screen.getAllByRole('option')
+    const optionTexts = options.map(opt => opt.textContent)
+    expect(optionTexts.some(text => text?.includes('John Doe') && text?.includes('Tech Corp'))).toBe(true)
+    expect(optionTexts.some(text => text?.includes('Jane Smith') && text?.includes('Startup Inc'))).toBe(true)
   })
 
-  it('should display campaign options', () => {
+  it('should display campaign options', async () => {
+    const user = userEvent.setup()
+    
     render(
       <ActivityForm
         userId="user-1"
@@ -93,12 +117,17 @@ describe('ActivityForm', () => {
       />
     )
 
-    const campaignSelect = screen.getByLabelText('Campaign (Optional)')
-    expect(campaignSelect).toHaveValue('')
+    // Open campaign dropdown to see options
+    const campaignButton = screen.getByRole('button', { name: /Select a campaign/ })
+    await user.click(campaignButton)
     
-    // Check that campaigns are available
-    expect(screen.getByText('Q1 Outreach')).toBeInTheDocument()
-    expect(screen.getByText('Enterprise Sales')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    // Check that campaigns are available in the dropdown
+    expect(screen.getByRole('option', { name: /Q1 Outreach/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Enterprise Sales/ })).toBeInTheDocument()
   })
 
   it('should show character count for subject', () => {
@@ -133,7 +162,7 @@ describe('ActivityForm', () => {
     expect(screen.getByText('9/1000 characters')).toBeInTheDocument()
   })
 
-  it('should validate required subject field', async () => {
+  it('should validate required fields', async () => {
     render(
       <ActivityForm
         userId="user-1"
@@ -143,8 +172,8 @@ describe('ActivityForm', () => {
       />
     )
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(screen.getByText('Subject is required')).toBeInTheDocument()
@@ -167,8 +196,8 @@ describe('ActivityForm', () => {
     const longSubject = 'a'.repeat(201)
     fireEvent.change(subjectInput, { target: { value: longSubject } })
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(screen.getByText('Subject must be less than 200 characters')).toBeInTheDocument()
@@ -193,8 +222,8 @@ describe('ActivityForm', () => {
     fireEvent.change(subjectInput, { target: { value: 'Valid subject' } })
     fireEvent.change(noteTextarea, { target: { value: 'a'.repeat(1001) } })
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(screen.getByText('Note must be less than 1000 characters')).toBeInTheDocument()
@@ -219,8 +248,8 @@ describe('ActivityForm', () => {
     fireEvent.change(subjectInput, { target: { value: 'Test activity' } })
     fireEvent.change(noteTextarea, { target: { value: 'Test note' } })
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith({
@@ -234,7 +263,9 @@ describe('ActivityForm', () => {
     })
   })
 
-  it('should submit form with contact and campaign selected', async () => {
+  it('should submit form with all fields filled', async () => {
+    const user = userEvent.setup()
+    
     render(
       <ActivityForm
         userId="user-1"
@@ -244,22 +275,56 @@ describe('ActivityForm', () => {
       />
     )
 
-    const subjectInput = screen.getByLabelText('Subject *')
-    const contactSelect = screen.getByLabelText('Contact (Optional)')
-    const campaignSelect = screen.getByLabelText('Campaign (Optional)')
+    // Select activity type (Email)
+    const activityTypeButton = screen.getByRole('button', { name: /📞 Call/ })
+    await user.click(activityTypeButton)
     
-    fireEvent.change(subjectInput, { target: { value: 'Test activity' } })
-    fireEvent.change(contactSelect, { target: { value: 'contact-1' } })
-    fireEvent.change(campaignSelect, { target: { value: 'campaign-1' } })
+    // Wait for dropdown to open and select Email
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    const emailOption = screen.getByRole('option', { name: /📧 Email/ })
+    await user.click(emailOption)
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    // Fill in subject and note
+    const subjectInput = screen.getByLabelText('Subject *')
+    const noteTextarea = screen.getByLabelText('Note (Optional)')
+    
+    await user.type(subjectInput, 'Follow up email')
+    await user.type(noteTextarea, 'Important follow up')
+
+    // Select contact
+    const contactButton = screen.getByRole('button', { name: /Select a contact/ })
+    await user.click(contactButton)
+    
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    const contactOption = screen.getByRole('option', { name: /John Doe \(Tech Corp\)/ })
+    await user.click(contactOption)
+
+    // Select campaign
+    const campaignButton = screen.getByRole('button', { name: /Select a campaign/ })
+    await user.click(campaignButton)
+    
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    const campaignOption = screen.getByRole('option', { name: /Q1 Outreach/ })
+    await user.click(campaignOption)
+
+    // Submit form
+    const submitButton = screen.getByRole('button', { name: 'Log Activity' })
+    await user.click(submitButton)
 
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith({
-        type: 'CALL',
-        subject: 'Test activity',
-        note: '',
+        type: 'EMAIL',
+        subject: 'Follow up email',
+        note: 'Important follow up',
         dueDate: undefined,
         contactId: 'contact-1',
         campaignId: 'campaign-1',
@@ -267,7 +332,9 @@ describe('ActivityForm', () => {
     })
   })
 
-  it('should show selected contact information', () => {
+  it('should show selected contact information', async () => {
+    const user = userEvent.setup()
+    
     render(
       <ActivityForm
         userId="user-1"
@@ -277,13 +344,29 @@ describe('ActivityForm', () => {
       />
     )
 
-    const contactSelect = screen.getByLabelText('Contact (Optional)')
-    fireEvent.change(contactSelect, { target: { value: 'contact-1' } })
+    // Select contact
+    const contactButton = screen.getByRole('button', { name: /Select a contact/ })
+    await user.click(contactButton)
+    
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    const contactOption = screen.getByRole('option', { name: /John Doe \(Tech Corp\)/ })
+    await user.click(contactOption)
 
-    expect(screen.getByText('John Doe • Tech Corp')).toBeInTheDocument()
+    // Check that contact info is displayed in the info container
+    await waitFor(() => {
+      const infoContainer = screen.getByTestId('contact-info-container')
+      expect(infoContainer).toHaveClass('bg-gray-50')
+      expect(infoContainer).toHaveTextContent('John Doe')
+      expect(infoContainer).toHaveTextContent('Tech Corp')
+    })
   })
 
-  it('should show selected campaign information', () => {
+  it('should show selected campaign information', async () => {
+    const user = userEvent.setup()
+    
     render(
       <ActivityForm
         userId="user-1"
@@ -293,10 +376,23 @@ describe('ActivityForm', () => {
       />
     )
 
-    const campaignSelect = screen.getByLabelText('Campaign (Optional)')
-    fireEvent.change(campaignSelect, { target: { value: 'campaign-1' } })
+    // Select campaign
+    const campaignButton = screen.getByRole('button', { name: /Select a campaign/ })
+    await user.click(campaignButton)
+    
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    const campaignOption = screen.getByRole('option', { name: /Q1 Outreach/ })
+    await user.click(campaignOption)
 
-    expect(screen.getByText('Q1 Outreach')).toBeInTheDocument()
+    // Check that campaign info is displayed in the info container
+    await waitFor(() => {
+      const infoContainer = screen.getByTestId('campaign-info-container')
+      expect(infoContainer).toHaveClass('bg-gray-50')
+      expect(infoContainer).toHaveTextContent('Q1 Outreach')
+    })
   })
 
   it('should handle contact creation modal', () => {
@@ -309,7 +405,9 @@ describe('ActivityForm', () => {
       />
     )
 
-    const addContactButton = screen.getByText('+')
+    // Use getAllByText and get the first + button (contact add button)
+    const addButtons = screen.getAllByText('+')
+    const addContactButton = addButtons[0]
     fireEvent.click(addContactButton)
 
     expect(screen.getByText('Add New Contact')).toBeInTheDocument()
@@ -326,7 +424,9 @@ describe('ActivityForm', () => {
       />
     )
 
-    const addCampaignButton = screen.getAllByText('+')[1]
+    // Use getAllByText and get the second + button (campaign add button)
+    const addButtons = screen.getAllByText('+')
+    const addCampaignButton = addButtons[1]
     fireEvent.click(addCampaignButton)
 
     expect(screen.getByText('Create New Campaign')).toBeInTheDocument()
@@ -348,8 +448,8 @@ describe('ActivityForm', () => {
     const subjectInput = screen.getByLabelText('Subject *')
     fireEvent.change(subjectInput, { target: { value: 'Test activity' } })
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(screen.getByText('Failed to log activity. Please try again.')).toBeInTheDocument()
@@ -372,8 +472,8 @@ describe('ActivityForm', () => {
     fireEvent.change(subjectInput, { target: { value: 'Test activity' } })
     fireEvent.change(noteTextarea, { target: { value: 'Test note' } })
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalled()
@@ -394,8 +494,8 @@ describe('ActivityForm', () => {
       />
     )
 
-    const submitButton = screen.getAllByRole('button', { name: 'Log Activity' })[0]
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('activity-form')
+    fireEvent.submit(form)
 
     await waitFor(() => {
       expect(screen.getByText('Subject is required')).toBeInTheDocument()
@@ -453,7 +553,9 @@ describe('ActivityForm', () => {
     expect(screen.getAllByText('Select a campaign')[0]).toBeInTheDocument()
   })
 
-  it('should handle contact without organisation', () => {
+  it('should handle contact without organisation', async () => {
+    const user = userEvent.setup()
+    
     const contactsWithoutOrg = [
       { id: 'contact-1', name: 'John Doe', organisation: undefined },
     ]
@@ -467,10 +569,23 @@ describe('ActivityForm', () => {
       />
     )
 
-    const contactSelect = screen.getByLabelText('Contact (Optional)')
-    fireEvent.change(contactSelect, { target: { value: 'contact-1' } })
+    // Select contact
+    const contactButton = screen.getByRole('button', { name: /Select a contact/ })
+    await user.click(contactButton)
+    
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeInTheDocument()
+    })
+    
+    const contactOption = screen.getByRole('option', { name: /John Doe/ })
+    await user.click(contactOption)
 
-    expect(screen.getByText('John Doe')).toBeInTheDocument()
-    expect(screen.queryByText('John Doe •')).not.toBeInTheDocument()
+    // Check that contact info is displayed without organisation
+    await waitFor(() => {
+      const infoContainer = screen.getByTestId('contact-info-container')
+      expect(infoContainer).toHaveClass('bg-gray-50')
+      expect(infoContainer).toHaveTextContent('John Doe')
+      expect(infoContainer).not.toHaveTextContent('•')
+    })
   })
 }) 

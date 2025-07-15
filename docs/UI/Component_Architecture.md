@@ -385,3 +385,14 @@ E2E Testing:
 ```
 
 This component architecture provides a clear structure for building the Pipedriver UI with proper separation of concerns, reusability, and maintainability. Each component has a specific responsibility and clear interfaces for interaction with other components. 
+
+# UI Component Architecture
+
+## Organization Autocomplete in Contact Creation
+
+- The Create Contact form now uses an organization autocomplete input.
+- As the user types, it searches both local organizations and Pipedrive organizations.
+- Results are grouped and labeled by source (Local, Pipedrive).
+- If no match is found, the user can create a new organization inline.
+- On selection, the contact is linked to the selected or newly created organization.
+- This component is used everywhere a contact can be created (modals, wizards, etc). 

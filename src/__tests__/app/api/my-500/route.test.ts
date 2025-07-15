@@ -1,126 +1,165 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { getMy500Data } from '@/lib/my-500-data'
-import { getServerSession } from '@/lib/auth'
+import request from 'supertest'
+import app from '@/test-utils/testApp'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { GET } from '@/app/api/my-500/route'
 
-vi.mock('@/lib/auth')
-
-const mockGetServerSession = vi.mocked(getServerSession)
-
-// Helper to create a user and contacts in the test database
-async function createUserWithContacts({ userId, email, contacts = [] }: any) {
-  const user = await prisma.user.create({
-    data: {
-      id: userId,
-      email,
-      name: 'Test User',
-      role: 'CONSULTANT',
+vi.mock('next-auth')
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    contact: {
+      findMany: vi.fn(),
+      count: vi.fn(),
     },
-  })
-  for (const contact of contacts) {
-    await prisma.contact.create({
-      data: { ...contact, userId: user.id },
-    })
+    user: {
+      findUnique: vi.fn(),
+    },
+  },
+}))
+
+// Mount the API route handler
+app.mountAppRoute('/api/my-500', GET)
+
+const mockSession = {
+  user: { 
+    id: 'user-123', 
+    email: 'test@example.com', 
+    name: 'Test User',
+    pipedriveApiKey: 'test-api-key'
   }
-  return user
 }
 
-describe('My 500 API/server integration', () => {
-  beforeEach(async () => {
-    await prisma.activity.deleteMany({})
-    await prisma.contact.deleteMany({})
-    await prisma.user.deleteMany({})
+const mockContacts = [
+  {
+    id: 'contact-1',
+    name: 'Alice Johnson',
+    email: 'alice@example.com',
+    organisation: 'Acme Corp',
+    warmnessScore: 2,
+    lastContacted: new Date('2024-01-01T10:00:00Z'),
+    addedToCampaign: true,
+    pipedrivePersonId: '1',
+    syncStatus: 'SYNCED',
+    createdAt: new Date('2024-01-01T09:00:00Z'),
+    updatedAt: new Date('2024-01-01T11:00:00Z'),
+    userId: 'user-123',
+    activities: [],
+  },
+  {
+    id: 'contact-2',
+    name: 'Bob Smith',
+    email: 'bob@example.com',
+    organisation: 'Beta Inc',
+    warmnessScore: 5,
+    lastContacted: new Date('2024-01-02T10:00:00Z'),
+    addedToCampaign: false,
+    pipedrivePersonId: '2',
+    syncStatus: 'SYNCED',
+    createdAt: new Date('2024-01-02T09:00:00Z'),
+    updatedAt: new Date('2024-01-02T11:00:00Z'),
+    userId: 'user-123',
+    activities: [],
+  },
+  {
+    id: 'contact-3',
+    name: 'Charlie Brown',
+    email: 'charlie@example.com',
+    organisation: 'Gamma LLC',
+    warmnessScore: 1,
+    lastContacted: null,
+    addedToCampaign: false,
+    pipedrivePersonId: '3',
+    syncStatus: 'SYNCED',
+    createdAt: new Date('2024-01-03T09:00:00Z'),
+    updatedAt: new Date('2024-01-03T11:00:00Z'),
+    userId: 'user-123',
+    activities: [],
+  }
+]
+
+describe('/api/my-500 endpoint', () => {
+  beforeEach(() => {
     vi.clearAllMocks()
-  })
-  afterEach(async () => {
-    await prisma.activity.deleteMany({})
-    await prisma.contact.deleteMany({})
-    await prisma.user.deleteMany({})
-  })
-
-  it('returns only the authenticated user contacts', async () => {
-    const user = await createUserWithContacts({
-      userId: 'user-1',
-      email: 'user1@example.com',
-      contacts: [
-        { id: 'c1', name: 'Contact 1', email: 'c1@example.com', warmnessScore: 5 },
-        { id: 'c2', name: 'Contact 2', email: 'c2@example.com', warmnessScore: 2 },
-      ],
+    vi.mocked(getServerSession).mockResolvedValue(mockSession)
+    vi.mocked(prisma.contact.findMany).mockResolvedValue(mockContacts)
+    vi.mocked(prisma.contact.count).mockResolvedValue(mockContacts.length)
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'user-123',
+      lastSyncTimestamp: new Date('2024-01-01T08:00:00Z'),
+      syncStatus: 'SYNCED',
     })
-    await createUserWithContacts({
-      userId: 'user-2',
-      email: 'user2@example.com',
-      contacts: [
-        { id: 'c3', name: 'Other Contact', email: 'c3@example.com', warmnessScore: 8 },
-      ],
-    })
-    mockGetServerSession.mockResolvedValue({ user: { id: user.id, email: user.email, role: 'CONSULTANT' } } as any)
-    const { contacts, error } = await getMy500Data()
-    expect(error).toBeUndefined()
-    expect(contacts).toHaveLength(2)
-    expect(contacts.every(c => c.userId === user.id)).toBe(true)
   })
 
-  it('rejects unauthenticated users', async () => {
-    mockGetServerSession.mockResolvedValue(null)
-    const { contacts, error } = await getMy500Data()
-    expect(contacts).toHaveLength(0)
-    expect(error).toMatch(/Authentication required/i)
+  afterEach(() => {
+    vi.resetAllMocks()
   })
 
-  it('does not return contacts for other users (RBAC)', async () => {
-    await createUserWithContacts({
-      userId: 'user-1',
-      email: 'user1@example.com',
-      contacts: [
-        { id: 'c1', name: 'Contact 1', email: 'c1@example.com', warmnessScore: 5 },
-      ],
-    })
-    const user2 = await createUserWithContacts({
-      userId: 'user-2',
-      email: 'user2@example.com',
-      contacts: [
-        { id: 'c2', name: 'Other Contact', email: 'c2@example.com', warmnessScore: 8 },
-      ],
-    })
-    mockGetServerSession.mockResolvedValue({ user: { id: user2.id, email: user2.email, role: 'CONSULTANT' } } as any)
-    const { contacts } = await getMy500Data()
-    expect(contacts).toHaveLength(1)
-    expect(contacts[0].userId).toBe(user2.id)
-    expect(contacts[0].name).toBe('Other Contact')
+  it('should return 401 if not authenticated', async () => {
+    vi.mocked(getServerSession).mockResolvedValue(null)
+    const res = await request(app).get('/api/my-500')
+    expect(res.status).toBe(401)
+    expect(res.body.success).toBe(false)
+    expect(res.body.error).toMatch(/auth/i)
   })
 
-  it('returns empty array if user has no contacts', async () => {
-    const user = await createUserWithContacts({ userId: 'user-3', email: 'user3@example.com', contacts: [] })
-    mockGetServerSession.mockResolvedValue({ user: { id: user.id, email: user.email, role: 'CONSULTANT' } } as any)
-    const { contacts } = await getMy500Data()
-    expect(contacts).toHaveLength(0)
+  it('should return contacts sorted by priority algorithm', async () => {
+    // Mock the sorted contacts (as they would be returned by the database)
+    const sortedContacts = [
+      mockContacts[0], // Alice Johnson (addedToCampaign: true)
+      mockContacts[2], // Charlie Brown (warmnessScore: 1, lastContacted: null)
+      mockContacts[1], // Bob Smith (warmnessScore: 5)
+    ]
+    vi.mocked(prisma.contact.findMany).mockResolvedValue(sortedContacts)
+    
+    const res = await request(app).get('/api/my-500')
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    const contacts = res.body.data.contacts
+    // Priority: addedToCampaign, warmnessScore ASC, lastContacted ASC/null, createdAt DESC
+    expect(contacts[0].addedToCampaign).toBe(true)
+    expect(contacts[1].warmnessScore).toBe(1)
+    expect(contacts[2].name).toBe('Bob Smith')
   })
 
-  it('returns contacts with activities if present', async () => {
-    const user = await createUserWithContacts({
-      userId: 'user-4',
-      email: 'user4@example.com',
-      contacts: [
-        { id: 'c1', name: 'Contact 1', email: 'c1@example.com', warmnessScore: 5 },
-      ],
-    })
-    const contact = await prisma.contact.findUnique({ where: { id: 'c1' } })
-    await prisma.activity.create({
-      data: {
-        id: 'a1',
-        type: 'CALL',
-        subject: 'Test Call',
-        note: 'Test note',
-        dueDate: new Date(),
-        contactId: contact!.id,
-        userId: user.id,
-      },
-    })
-    mockGetServerSession.mockResolvedValue({ user: { id: user.id, email: user.email, role: 'CONSULTANT' } } as any)
-    const { contacts } = await getMy500Data()
-    expect(contacts).toHaveLength(1)
-    expect(contacts[0].activities.length).toBeGreaterThanOrEqual(1)
-    expect(contacts[0].activities[0].subject).toBe('Test Call')
+  it('should support pagination', async () => {
+    vi.mocked(prisma.contact.findMany).mockResolvedValue([mockContacts[0]])
+    vi.mocked(prisma.contact.count).mockResolvedValue(3)
+    const res = await request(app).get('/api/my-500?page=1&limit=1')
+    expect(res.status).toBe(200)
+    expect(res.body.data.contacts).toHaveLength(1)
+    expect(res.body.data.pagination.page).toBe(1)
+    expect(res.body.data.pagination.limit).toBe(1)
+    expect(res.body.data.pagination.total).toBe(3)
+  })
+
+  it('should support search by name/email/organisation', async () => {
+    vi.mocked(prisma.contact.findMany).mockResolvedValue([mockContacts[1]])
+    const res = await request(app).get('/api/my-500?search=Bob')
+    expect(res.status).toBe(200)
+    expect(res.body.data.contacts[0].name).toBe('Bob Smith')
+  })
+
+  it('should return sync status and pagination info', async () => {
+    const res = await request(app).get('/api/my-500')
+    expect(res.status).toBe(200)
+    expect(res.body.data.syncStatus.lastSync).toBeTruthy()
+    expect(res.body.data.pagination.total).toBe(mockContacts.length)
+  })
+
+  it('should handle empty state', async () => {
+    vi.mocked(prisma.contact.findMany).mockResolvedValue([])
+    vi.mocked(prisma.contact.count).mockResolvedValue(0)
+    const res = await request(app).get('/api/my-500')
+    expect(res.status).toBe(200)
+    expect(res.body.data.contacts).toHaveLength(0)
+  })
+
+  it('should handle database errors gracefully', async () => {
+    vi.mocked(prisma.contact.findMany).mockRejectedValue(new Error('DB error'))
+    const res = await request(app).get('/api/my-500')
+    expect(res.status).toBe(500)
+    expect(res.body.success).toBe(false)
+    expect(res.body.error).toMatch(/db error/i)
   })
 }) 

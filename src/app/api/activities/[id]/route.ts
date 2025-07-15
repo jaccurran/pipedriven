@@ -19,7 +19,7 @@ const updateActivitySchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -29,8 +29,9 @@ export async function GET(
     }
 
     // Create service instance and get activity
+    const { id } = await params
     const activityService = new ActivityService()
-    const activity = await activityService.getActivityById(params.id)
+    const activity = await activityService.getActivityById(id)
 
     if (!activity) {
       return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
@@ -45,7 +46,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -76,8 +77,9 @@ export async function PUT(
     }
 
     // Create service instance and update activity
+    const { id } = await params
     const activityService = new ActivityService()
-    const activity = await activityService.updateActivity(params.id, validatedData)
+    const activity = await activityService.updateActivity(id, validatedData)
 
     return NextResponse.json(activity)
   } catch (error) {
@@ -94,7 +96,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -104,8 +106,9 @@ export async function DELETE(
     }
 
     // Create service instance and delete activity
+    const { id } = await params
     const activityService = new ActivityService()
-    const activity = await activityService.deleteActivity(params.id)
+    const activity = await activityService.deleteActivity(id)
 
     return NextResponse.json(activity)
   } catch (error) {

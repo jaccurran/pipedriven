@@ -492,16 +492,26 @@ describe('ContactService', () => {
     it('should handle contact with no activities', async () => {
       // Arrange
       (mockPrisma.activity.findMany as any).mockResolvedValue([]);
-      (mockPrisma.activity.count as any).mockResolvedValue(0);
+      (mockPrisma.contact.findUnique as any).mockResolvedValue({
+        ...mockContact,
+        campaigns: [],
+      });
 
       // Act
       const result = await contactService.getContactAnalytics(mockContact.id);
 
       // Assert
       expect(result.totalActivities).toBe(0);
-      expect(result.activityBreakdown).toEqual({});
+      expect(result.activityBreakdown).toEqual({
+        EMAIL: 0,
+        CALL: 0,
+        MEETING: 0,
+        LINKEDIN: 0,
+        REFERRAL: 0,
+        CONFERENCE: 0,
+      });
       expect(result.lastActivityDate).toBeNull();
-      expect(result.averageWarmnessScore).toBe(0);
+      expect(result.averageWarmnessScore).toBe(5); // mockContact.warmnessScore
       expect(result.campaignsCount).toBe(0);
     });
   });

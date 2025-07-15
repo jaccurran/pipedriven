@@ -12,7 +12,6 @@ interface CampaignFormData {
   startDate: string
   endDate: string
   targetLeads: number
-  budget: number
 }
 
 interface CampaignFormProps {
@@ -30,7 +29,6 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
     startDate: '',
     endDate: '',
     targetLeads: 0,
-    budget: 0,
   })
   
   const [errors, setErrors] = useState<Partial<CampaignFormData>>({})
@@ -45,7 +43,6 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
         startDate: campaign.startDate.toISOString().split('T')[0],
         endDate: campaign.endDate.toISOString().split('T')[0],
         targetLeads: campaign.targetLeads,
-        budget: campaign.budget,
       })
     }
   }, [campaign])
@@ -75,10 +72,6 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
 
     if (formData.targetLeads < 0) {
       newErrors.targetLeads = 'Target leads must be a positive number'
-    }
-
-    if (formData.budget < 0) {
-      newErrors.budget = 'Budget must be a positive number'
     }
 
     setErrors(newErrors)
@@ -121,7 +114,6 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
         startDate: '',
         endDate: '',
         targetLeads: 0,
-        budget: 0,
       })
       setErrors({})
     }
@@ -239,28 +231,6 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
           />
           {errors.targetLeads && (
             <p className="mt-1 text-sm text-red-600">{errors.targetLeads}</p>
-          )}
-        </div>
-
-        {/* Budget */}
-        <div>
-          <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-            Budget ($)
-          </label>
-          <input
-            type="number"
-            id="budget"
-            min="0"
-            step="0.01"
-            value={formData.budget}
-            onChange={(e) => handleInputChange('budget', parseFloat(e.target.value) || 0)}
-            className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-              errors.budget ? 'border-red-300' : ''
-            }`}
-            placeholder="0.00"
-          />
-          {errors.budget && (
-            <p className="mt-1 text-sm text-red-600">{errors.budget}</p>
           )}
         </div>
       </div>

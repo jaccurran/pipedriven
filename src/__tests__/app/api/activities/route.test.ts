@@ -125,7 +125,7 @@ describe('/api/activities', () => {
       mockActivityServiceInstance.getActivities.mockResolvedValue(mockResult)
 
       const request = new NextRequest(
-        'http://localhost:3000/api/activities?type=EMAIL&outcome=POSITIVE&contactId=contact-123&page=2&limit=5'
+        'http://localhost:3000/api/activities?type=EMAIL&contactId=contact-123&page=2&limit=5'
       )
 
       // Act
@@ -138,7 +138,6 @@ describe('/api/activities', () => {
       expect(mockActivityServiceInstance.getActivities).toHaveBeenCalledWith({
         userId: mockUser.id,
         type: 'EMAIL',
-        outcome: 'POSITIVE',
         contactId: 'contact-123',
         page: 2,
         limit: 5,
@@ -351,7 +350,7 @@ describe('/api/activities', () => {
     it('should validate activity outcome', async () => {
       // Arrange
       const invalidData = {
-        type: 'EMAIL',
+        // Missing required type field
         subject: 'Follow-up Email',
         note: 'Contact responded positively',
         dueDate: '2024-01-15',

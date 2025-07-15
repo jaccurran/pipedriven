@@ -4,7 +4,7 @@ import { getServerSession } from '@/lib/auth'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -14,8 +14,9 @@ export async function GET(
     }
 
     // Create service instance and get contact analytics
+    const { id } = await params
     const contactService = new ContactService()
-    const analytics = await contactService.getContactAnalytics(params.id)
+    const analytics = await contactService.getContactAnalytics(id)
 
     return NextResponse.json(analytics)
   } catch (error) {

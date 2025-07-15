@@ -16,7 +16,6 @@ interface CampaignFormData {
   startDate: string
   endDate: string
   targetLeads: number
-  budget: number
 }
 
 export function NewCampaignForm({ user }: NewCampaignFormProps) {

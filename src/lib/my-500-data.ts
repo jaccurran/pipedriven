@@ -1,9 +1,10 @@
 import { getServerSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import type { Contact, Activity } from '@prisma/client'
+import type { Contact, Activity, Organization } from '@prisma/client'
 
 export interface ContactWithActivities extends Contact {
   activities: Activity[]
+  organization?: Organization | null
 }
 
 export interface My500Data {
@@ -42,7 +43,8 @@ export async function getMy500Data(): Promise<My500Data> {
         activities: {
           orderBy: { createdAt: 'desc' },
           take: 1 // Only get the most recent activity for performance
-        }
+        },
+        organization: true
       },
       orderBy: [
         { warmnessScore: 'desc' }, // Highest priority first

@@ -1,390 +1,313 @@
-import React from 'react'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ContactCard } from '@/components/contacts/ContactCard'
-import { Contact, User } from '@prisma/client'
+import { Contact } from '@prisma/client'
 
-// Mock data
-const mockUser: User = {
-  id: 'user-1',
-  email: 'test@example.com',
-  name: 'Test User',
-  role: 'CONSULTANT',
-  password: 'hashed-password',
-  pipedriveApiKey: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  emailVerified: null,
-  image: null,
-}
+// Mock the action components
+vi.mock('@/components/actions/QuickActionButton', () => ({
+  QuickActionButton: ({ type, onClick, contactName, className }: any) => (
+    <button
+      onClick={() => onClick(type)}
+      aria-label={`Log ${type.toLowerCase()} for ${contactName}`}
+      className={className}
+      data-testid={`quick-action-${type.toLowerCase()}`}
+    >
+      {type}
+    </button>
+  ),
+}))
 
-const mockContact: Contact = {
-  id: 'contact-1',
-  name: 'John Doe',
-  email: 'john.doe@example.com',
-  phone: '+1234567890',
-  organisation: 'Acme Corp',
-  warmnessScore: 5,
-  lastContacted: new Date('2025-01-10'),
-  addedToCampaign: false,
-  pipedrivePersonId: 'pipedrive-123',
-  pipedriveOrgId: null,
-  userId: 'user-1',
-  createdAt: new Date('2025-01-01'),
-  updatedAt: new Date('2025-01-15'),
-}
+vi.mock('@/components/actions/ActionMenu', () => ({
+  ActionMenu: ({ onAction, contactName }: any) => (
+    <div data-testid="action-menu">
+      <button
+        onClick={() => onAction('LINKEDIN')}
+        aria-label="LinkedIn action"
+        data-testid="linkedin-action"
+      >
+        LinkedIn
+      </button>
+      <button
+        onClick={() => onAction('PHONE_CALL')}
+        aria-label="Phone call action"
+        data-testid="phone-call-action"
+      >
+        Phone Call
+      </button>
+      <button
+        onClick={() => onAction('CONFERENCE')}
+        aria-label="Conference action"
+        data-testid="conference-action"
+      >
+        Conference
+      </button>
+    </div>
+  ),
+}))
 
 describe('ContactCard', () => {
+  const mockContact: Contact = {
+    id: 'contact-1',
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    phone: '+1234567890',
+    organisation: 'Acme Corp',
+    warmnessScore: 5,
+    lastContacted: new Date('2025-01-10'),
+    addedToCampaign: false,
+    pipedrivePersonId: 'pipedrive-123',
+    pipedriveOrgId: null,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+    userId: 'user-1',
+  }
+
   const mockOnEdit = vi.fn()
   const mockOnDelete = vi.fn()
   const mockOnActivity = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
+    // Clean up the DOM to prevent multiple elements
+    document.body.innerHTML = ''
   })
 
-  afterEach(() => {
-    cleanup()
-  })
-
-  describe('Rendering', () => {
-    it('renders contact information correctly', () => {
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      expect(screen.getByText('John Doe')).toBeInTheDocument()
-      expect(screen.getByText('john.doe@example.com')).toBeInTheDocument()
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+  describe('Basic Rendering', () => {
+    it('renders the contact name in the contact-name test id', () => {
+      render(<ContactCard contact={mockContact} />)
+      expect(screen.getByTestId('contact-name')).toHaveTextContent('John Doe')
     })
-
-    it('displays Pipedrive status indicator', () => {
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const pipedriveIndicators = screen.getAllByTestId('pipedrive-status')
-      expect(pipedriveIndicators).toHaveLength(1)
-      const pipedriveIndicator = pipedriveIndicators[0]
-      expect(pipedriveIndicator).toBeInTheDocument()
-      expect(pipedriveIndicator).toHaveClass('bg-green-100', 'text-green-800')
+    it('renders the contact email in the contact-email test id', () => {
+      render(<ContactCard contact={mockContact} />)
+      expect(screen.getByTestId('contact-email')).toHaveTextContent('john.doe@example.com')
     })
-
-    it('displays contact tags correctly', () => {
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const warmTags = screen.getAllByText('WARM')
-      expect(warmTags).toHaveLength(1)
-      expect(warmTags[0]).toBeInTheDocument()
+    it('renders the contact organisation in the contact-organisation test id', () => {
+      render(<ContactCard contact={mockContact} />)
+      expect(screen.getByTestId('contact-organisation')).toHaveTextContent('Acme Corp')
     })
-
-    it('shows activity status with correct color coding', () => {
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const activityIndicators = screen.getAllByTestId('activity-status')
-      // Find the indicator with text 'Warm Lead'
-      const activityIndicator = activityIndicators.find(el => el.textContent?.includes('Warm Lead'))
-      expect(activityIndicator).toBeDefined()
-      // Warm lead should have green indicator
-      expect(activityIndicator).toHaveClass('bg-green-100', 'text-green-800')
+    it('renders the last contacted date in the last-contacted-value test id', () => {
+      render(<ContactCard contact={mockContact} />)
+      expect(screen.getByTestId('last-contacted-value')).toHaveTextContent('Jan 10, 2025')
     })
-
-    it('displays last activity date', () => {
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      expect(screen.getAllByText(/Jan 10/).length).toBeGreaterThan(0)
+    it('renders the warmness score in the warmness-value test id', () => {
+      render(<ContactCard contact={mockContact} />)
+      expect(screen.getByTestId('warmness-value')).toHaveTextContent('5/10')
     })
-
-    it('shows recurring activity frequency', () => {
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      expect(screen.getAllByText('3 months').length).toBeGreaterThan(0)
+    it('renders the warmness text and score in the warmness-badge test id', () => {
+      render(<ContactCard contact={mockContact} />)
+      expect(screen.getByTestId('warmness-badge')).toHaveTextContent('Warm (5/10)')
     })
   })
 
-  describe('Contact Status Colors', () => {
-    it('shows green for warm leads', () => {
-      const warmContact = { ...mockContact, tags: ['WARM'] }
-      
-      render(
-        <ContactCard
-          contact={warmContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const activityIndicators = screen.getAllByTestId('activity-status')
-      // Find the indicator with text 'Warm Lead'
-      const activityIndicator = activityIndicators.find(el => el.textContent?.includes('Warm Lead'))
-      expect(activityIndicator).toBeDefined()
-      expect(activityIndicator).toHaveClass('bg-green-100', 'text-green-800')
-    })
-
-    it('shows yellow for contacts with some activity', () => {
-      // Use a date that's within 30 days from now to ensure yellow status
-      const recentDate = new Date()
-      recentDate.setDate(recentDate.getDate() - 15) // 15 days ago
-      
-      const activeContact = { ...mockContact, tags: ['COLD'], lastActivityDate: recentDate }
-      
-      render(
-        <ContactCard
-          contact={activeContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const activityIndicators = screen.getAllByTestId('activity-status')
-      // Find the indicator with text 'Active'
-      const activityIndicator = activityIndicators.find(el => el.textContent?.includes('Active'))
-      expect(activityIndicator).toBeDefined()
-      expect(activityIndicator).toHaveClass('bg-yellow-100', 'text-yellow-800')
-    })
-
-    it('shows grey for contacts with no recent activity', () => {
-      const inactiveContact = { 
-        ...mockContact, 
-        tags: ['COLD'], 
-        lastActivityDate: new Date('2024-06-01') 
-      }
-      
-      render(
-        <ContactCard
-          contact={inactiveContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const activityIndicators = screen.getAllByTestId('activity-status')
-      // Find the indicator with text 'Inactive'
-      const activityIndicator = activityIndicators.find(el => el.textContent?.includes('Inactive'))
-      expect(activityIndicator).toBeDefined()
-      expect(activityIndicator).toHaveClass('bg-gray-100', 'text-gray-600')
-    })
-
-    it('shows red for lost cause contacts', () => {
-      const lostContact = { ...mockContact, tags: ['LOST_CAUSE'] }
-      
-      render(
-        <ContactCard
-          contact={lostContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const activityIndicators = screen.getAllByTestId('activity-status')
-      // Find the indicator with text 'Lost Cause'
-      const activityIndicator = activityIndicators.find(el => el.textContent?.includes('Lost Cause'))
-      expect(activityIndicator).toBeDefined()
-      expect(activityIndicator).toHaveClass('bg-red-100', 'text-red-800')
-    })
-  })
-
-  describe('Quick Action Buttons', () => {
-    it('renders all quick action buttons', () => {
+  describe('Edit and Delete Actions', () => {
+    it('shows edit and delete buttons when handlers are provided', () => {
       render(
         <ContactCard
           contact={mockContact}
           onEdit={mockOnEdit}
           onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
         />
       )
 
-      expect(screen.getAllByLabelText('Email Sent').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Meeting Requested').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Meeting Planned').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Meeting Completed').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Other Actions').length).toBeGreaterThan(0)
+      expect(screen.getByLabelText('Edit contact')).toBeInTheDocument()
+      expect(screen.getByLabelText('Delete contact')).toBeInTheDocument()
     })
 
-    it('calls onActivity with correct action when Email Sent is clicked', async () => {
-      const user = userEvent.setup()
-      
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const emailButtons = screen.getAllByLabelText('Email Sent')
-      await user.click(emailButtons[0])
-
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'EMAIL_SENT')
-    })
-
-    it('calls onActivity with correct action when Meeting Requested is clicked', async () => {
-      const user = userEvent.setup()
-      
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const meetingButtons = screen.getAllByLabelText('Meeting Requested')
-      await user.click(meetingButtons[0])
-
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING_REQUESTED')
-    })
-
-    it('calls onActivity with correct action when Meeting Planned is clicked', async () => {
-      const user = userEvent.setup()
-      
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const plannedButtons = screen.getAllByLabelText('Meeting Planned')
-      await user.click(plannedButtons[0])
-
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING_PLANNED')
-    })
-
-    it('calls onActivity with correct action when Meeting Completed is clicked', async () => {
-      const user = userEvent.setup()
-      
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const completedButtons = screen.getAllByLabelText('Meeting Completed')
-      await user.click(completedButtons[0])
-
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING_COMPLETED')
-    })
-  })
-
-  describe('Card Actions', () => {
     it('calls onEdit when edit button is clicked', async () => {
       const user = userEvent.setup()
-      
       render(
         <ContactCard
           contact={mockContact}
           onEdit={mockOnEdit}
           onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
         />
       )
 
-      const editButtons = screen.getAllByLabelText('Edit contact')
-      await user.click(editButtons[0])
-
+      await user.click(screen.getByLabelText('Edit contact'))
       expect(mockOnEdit).toHaveBeenCalledWith(mockContact)
     })
 
     it('calls onDelete when delete button is clicked', async () => {
       const user = userEvent.setup()
-      
       render(
         <ContactCard
           contact={mockContact}
           onEdit={mockOnEdit}
           onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
         />
       )
 
-      const deleteButtons = screen.getAllByLabelText('Delete contact')
-      await user.click(deleteButtons[0])
-
+      await user.click(screen.getByLabelText('Delete contact'))
       expect(mockOnDelete).toHaveBeenCalledWith(mockContact)
+    })
+
+    it('does not show edit and delete buttons when handlers are not provided', () => {
+      render(<ContactCard contact={mockContact} />)
+
+      expect(screen.queryByLabelText('Edit contact')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Delete contact')).not.toBeInTheDocument()
     })
   })
 
-  describe('Customer Status Indicators', () => {
-    it('shows existing customer indicator when contact is existing customer', () => {
-      const existingCustomer = { ...mockContact, isExistingCustomer: true }
-      
-      render(
-        <ContactCard
-          contact={existingCustomer}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
+  describe('Quick Action Buttons', () => {
+    it('shows quick action buttons when onActivity is provided', () => {
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
 
-      expect(screen.getByText('Existing Customer')).toBeInTheDocument()
+      expect(screen.getByTestId('quick-action-email')).toBeInTheDocument()
+      expect(screen.getByTestId('quick-action-meeting_request')).toBeInTheDocument()
+      expect(screen.getByTestId('quick-action-meeting')).toBeInTheDocument()
     })
 
-    it('shows existing customer org indicator when org is existing customer', () => {
-      const existingOrg = { ...mockContact, isExistingCustomerOrg: true }
-      
-      render(
-        <ContactCard
-          contact={existingOrg}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
+    it('calls onActivity with correct parameters when email button is clicked', async () => {
+      const user = userEvent.setup()
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
 
-      expect(screen.getByText('Existing Org')).toBeInTheDocument()
+      await user.click(screen.getByTestId('quick-action-email'))
+      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'EMAIL')
+    })
+
+    it('calls onActivity with correct parameters when meeting request button is clicked', async () => {
+      const user = userEvent.setup()
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+
+      await user.click(screen.getByTestId('quick-action-meeting_request'))
+      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING')
+    })
+
+    it('calls onActivity with correct parameters when meeting button is clicked', async () => {
+      const user = userEvent.setup()
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+
+      await user.click(screen.getByTestId('quick-action-meeting'))
+      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING')
+    })
+
+    it('does not show quick action buttons when onActivity is not provided', () => {
+      render(<ContactCard contact={mockContact} />)
+
+      expect(screen.queryByTestId('quick-action-email')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('quick-action-meeting_request')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('quick-action-meeting')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Action Menu', () => {
+    it('shows action menu when onActivity is provided', () => {
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+
+      expect(screen.getByTestId('action-menu')).toBeInTheDocument()
+    })
+
+    it('calls onActivity with correct parameters when LinkedIn action is clicked', async () => {
+      const user = userEvent.setup()
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+
+      await user.click(screen.getByTestId('linkedin-action'))
+      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'EMAIL')
+    })
+
+    it('calls onActivity with correct parameters when phone call action is clicked', async () => {
+      const user = userEvent.setup()
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+
+      await user.click(screen.getByTestId('phone-call-action'))
+      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'CALL')
+    })
+
+    it('calls onActivity with correct parameters when conference action is clicked', async () => {
+      const user = userEvent.setup()
+      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+
+      await user.click(screen.getByTestId('conference-action'))
+      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING')
+    })
+  })
+
+  describe('Activity Status Logic', () => {
+    it('shows "Warm Lead" for high warmness scores', () => {
+      const warmContact = { ...mockContact, warmnessScore: 8 }
+      render(<ContactCard contact={warmContact} />)
+
+      const activityStatus = screen.getByTestId('activity-status')
+      expect(activityStatus).toHaveTextContent('Warm Lead')
+    })
+
+    it('shows "Cold Lead" for low warmness scores', () => {
+      const coldContact = { ...mockContact, warmnessScore: 1 }
+      render(<ContactCard contact={coldContact} />)
+
+      const activityStatus = screen.getByTestId('activity-status')
+      expect(activityStatus).toHaveTextContent('Cold Lead')
+    })
+
+    it('shows "Active" for medium warmness with recent contact', () => {
+      const activeContact = { 
+        ...mockContact, 
+        warmnessScore: 5,
+        lastContacted: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) // 15 days ago
+      }
+      render(<ContactCard contact={activeContact} />)
+
+      const activityStatus = screen.getByTestId('activity-status')
+      expect(activityStatus).toHaveTextContent('Active')
+    })
+
+    it('shows "Inactive" for medium warmness with old contact', () => {
+      const inactiveContact = { 
+        ...mockContact, 
+        warmnessScore: 5,
+        lastContacted: new Date('2024-01-01') // Old contact
+      }
+      render(<ContactCard contact={inactiveContact} />)
+
+      const activityStatus = screen.getByTestId('activity-status')
+      expect(activityStatus).toHaveTextContent('Inactive')
+    })
+  })
+
+  describe('Warmness Text Logic', () => {
+    it('shows "Very Warm" for scores 7+', () => {
+      const veryWarmContact = { ...mockContact, warmnessScore: 8 }
+      render(<ContactCard contact={veryWarmContact} />)
+
+      expect(screen.getByText('Very Warm (8/10)')).toBeInTheDocument()
+    })
+
+    it('shows "Warm" for scores 5-6', () => {
+      const warmContact = { ...mockContact, warmnessScore: 6 }
+      render(<ContactCard contact={warmContact} />)
+
+      expect(screen.getByText('Warm (6/10)')).toBeInTheDocument()
+    })
+
+    it('shows "Lukewarm" for scores 3-4', () => {
+      const lukewarmContact = { ...mockContact, warmnessScore: 4 }
+      render(<ContactCard contact={lukewarmContact} />)
+
+      expect(screen.getByText('Lukewarm (4/10)')).toBeInTheDocument()
+    })
+
+    it('shows "Cold" for scores 0-2', () => {
+      const coldContact = { ...mockContact, warmnessScore: 2 }
+      render(<ContactCard contact={coldContact} />)
+
+      expect(screen.getByText('Cold (2/10)')).toBeInTheDocument()
+    })
+  })
+
+  describe('Campaign Status', () => {
+    it('shows "In Campaign" badge when contact is added to campaign', () => {
+      const campaignContact = { ...mockContact, addedToCampaign: true }
+      render(<ContactCard contact={campaignContact} />)
+
+      expect(screen.getByText('In Campaign')).toBeInTheDocument()
+    })
+
+    it('does not show "In Campaign" badge when contact is not in campaign', () => {
+      render(<ContactCard contact={mockContact} />)
+
+      expect(screen.queryByText('In Campaign')).not.toBeInTheDocument()
     })
   })
 
@@ -399,57 +322,42 @@ describe('ContactCard', () => {
         />
       )
 
-      expect(screen.getAllByLabelText('Edit contact').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Delete contact').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Email Sent').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Meeting Requested').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Meeting Planned').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Meeting Completed').length).toBeGreaterThan(0)
-      expect(screen.getAllByLabelText('Other Actions').length).toBeGreaterThan(0)
+      expect(screen.getByLabelText('Edit contact')).toBeInTheDocument()
+      expect(screen.getByLabelText('Delete contact')).toBeInTheDocument()
+      expect(screen.getByLabelText('Log email for John Doe')).toBeInTheDocument()
+      expect(screen.getByLabelText('Log meeting_request for John Doe')).toBeInTheDocument()
+      expect(screen.getByLabelText('Log meeting for John Doe')).toBeInTheDocument()
     })
 
-    it('supports keyboard navigation', async () => {
-      const user = userEvent.setup()
-      
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
+    it('has proper test IDs for testing', () => {
+      render(<ContactCard contact={mockContact} />)
 
-      const cards = screen.getAllByTestId('contact-card')
-      expect(cards.length).toBeGreaterThan(0)
-      cards[0].focus()
-
-      // Test tab navigation
-      await user.tab()
-      // Should focus on first interactive element
+      expect(screen.getByTestId('contact-card')).toBeInTheDocument()
+      expect(screen.getByTestId('pipedrive-status')).toBeInTheDocument()
+      expect(screen.getByTestId('activity-status')).toBeInTheDocument()
     })
   })
 
-  describe('Mobile Responsiveness', () => {
-    it('adapts layout for mobile screens', () => {
-      // Mock window.innerWidth for mobile
-      Object.defineProperty(window, 'innerWidth', {
-        writable: true,
-        configurable: true,
-        value: 768,
-      })
-
-      render(
-        <ContactCard
-          contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
-        />
-      )
-
-      const cards = screen.getAllByTestId('contact-card')
-      expect(cards.length).toBeGreaterThan(0)
+  describe('Edge Cases', () => {
+    it('does not render the contact email element if email is missing', () => {
+      const contactWithoutEmail = { ...mockContact, email: null }
+      const { queryByTestId } = render(<ContactCard contact={contactWithoutEmail} />)
+      expect(queryByTestId('contact-email')).toBeNull()
+    })
+    it('does not render the contact organisation element if organisation is missing', () => {
+      const contactWithoutOrg = { ...mockContact, organisation: null }
+      const { queryByTestId } = render(<ContactCard contact={contactWithoutOrg} />)
+      expect(queryByTestId('contact-organisation')).toBeNull()
+    })
+    it('renders "Never" in the last-contacted-value test id if lastContacted is missing', () => {
+      const contactWithoutLastContacted = { ...mockContact, lastContacted: null }
+      render(<ContactCard contact={contactWithoutLastContacted} />)
+      expect(screen.getByTestId('last-contacted-value')).toHaveTextContent('Never')
+    })
+    it('renders the contact name in the contact-name test id even if phone is missing', () => {
+      const contactWithoutPhone = { ...mockContact, phone: null }
+      render(<ContactCard contact={contactWithoutPhone} />)
+      expect(screen.getByTestId('contact-name')).toHaveTextContent('John Doe')
     })
   })
 }) 

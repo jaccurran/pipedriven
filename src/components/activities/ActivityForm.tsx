@@ -155,7 +155,7 @@ export function ActivityForm({
             Log New Activity
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" data-testid="activity-form">
             {/* Activity Type */}
             <div>
               <label htmlFor="activity-type" className="block text-sm font-medium text-gray-700 mb-2">
@@ -223,6 +223,7 @@ export function ActivityForm({
               </label>
               <DatePicker
                 id="activity-due-date"
+                value={formData.dueDate || null}
                 selected={formData.dueDate}
                 onChange={(date) => handleInputChange('dueDate', date)}
                 placeholderText="Select due date"
@@ -254,7 +255,7 @@ export function ActivityForm({
                 </Button>
               </div>
               {selectedContact && (
-                <div className="mt-2 p-2 bg-gray-50 rounded-md">
+                <div className="mt-2 p-2 bg-gray-50 rounded-md" data-testid="contact-info-container">
                   <p className="text-sm text-gray-700">
                     <strong>{selectedContact.name}</strong>
                     {selectedContact.organisation && (
@@ -288,7 +289,7 @@ export function ActivityForm({
                 </Button>
               </div>
               {selectedCampaign && (
-                <div className="mt-2 p-2 bg-gray-50 rounded-md">
+                <div className="mt-2 p-2 bg-gray-50 rounded-md" data-testid="campaign-info-container">
                   <p className="text-sm text-gray-700">
                     <strong>{selectedCampaign.name}</strong>
                   </p>

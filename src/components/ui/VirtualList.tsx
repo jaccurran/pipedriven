@@ -125,7 +125,4 @@ function VirtualList<T>({
 }
 
 // Export with proper typing
-export { VirtualList }
-
-// Export types for external use
-export type { VirtualListProps } 
+export { VirtualList } 

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 export interface DatePickerProps {
   label?: string
   value: Date | null
+  selected?: Date | null
   onChange: (date: Date | null) => void
   minDate?: Date
   maxDate?: Date
@@ -13,9 +14,11 @@ export interface DatePickerProps {
   required?: boolean
   disabled?: boolean
   placeholder?: string
+  placeholderText?: string
   className?: string
   id?: string
   name?: string
+  isClearable?: boolean
 }
 
 export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(

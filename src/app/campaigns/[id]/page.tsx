@@ -4,11 +4,13 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import type { UserWithoutPassword } from '@/types/user'
+import { CampaignContactList } from '@/components/campaigns/CampaignContactList'
+import { CampaignContactsWrapper } from '@/components/campaigns/CampaignContactsWrapper'
 
 interface CampaignDetailPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default async function CampaignDetailPage({ params }: CampaignDetailPageProps) {
@@ -37,9 +39,12 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
     redirect('/auth/signin')
   }
 
+  // Await params for Next.js 15 compatibility
+  const { id } = await params
+
   // Get campaign with user access check
   const campaign = await prisma.campaign.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       users: true,
       contacts: true,
@@ -65,7 +70,8 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
     }).format(amount)
   }
 
-  const formatDate = (date: Date) => {
+  const formatDate = (date: Date | null) => {
+    if (!date) return 'Not set'
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'short',
@@ -95,32 +101,25 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
                 <h3 className="text-sm font-medium text-gray-500">Description</h3>
                 <p className="mt-1 text-sm text-gray-900">{campaign.description}</p>
               </div>
-              
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Sector</h3>
                 <p className="mt-1 text-sm text-gray-900">{campaign.sector}</p>
               </div>
-              
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Theme</h3>
                 <p className="mt-1 text-sm text-gray-900">{campaign.theme}</p>
               </div>
-              
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Target Leads</h3>
                 <p className="mt-1 text-sm text-gray-900">{campaign.targetLeads}</p>
               </div>
-              
               <div>
-                <h3 className="text-sm font-medium text-gray-500">Budget</h3>
-                <p className="mt-1 text-sm text-gray-900">{formatCurrency(campaign.budget)}</p>
+                <h3 className="text-sm font-medium text-gray-500">Start Date</h3>
+                <p className="mt-1 text-sm text-gray-900">{formatDate(campaign.startDate)}</p>
               </div>
-              
               <div>
-                <h3 className="text-sm font-medium text-gray-500">Duration</h3>
-                <p className="mt-1 text-sm text-gray-900">
-                  {formatDate(campaign.startDate)} - {formatDate(campaign.endDate)}
-                </p>
+                <h3 className="text-sm font-medium text-gray-500">End Date</h3>
+                <p className="mt-1 text-sm text-gray-900">{formatDate(campaign.endDate)}</p>
               </div>
             </div>
           </div>
@@ -132,16 +131,23 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
             <h3 className="text-sm font-medium text-gray-500">Contacts</h3>
             <p className="mt-2 text-3xl font-bold text-gray-900">{campaign.contacts.length}</p>
           </div>
-          
           <div className="bg-white shadow rounded-lg p-6">
             <h3 className="text-sm font-medium text-gray-500">Activities</h3>
             <p className="mt-2 text-3xl font-bold text-gray-900">{campaign.activities.length}</p>
           </div>
-          
           <div className="bg-white shadow rounded-lg p-6">
             <h3 className="text-sm font-medium text-gray-500">Status</h3>
             <p className="mt-2 text-3xl font-bold text-gray-900">{campaign.status}</p>
           </div>
+        </div>
+
+        {/* Campaign Contacts with Action System */}
+        <div className="bg-white shadow rounded-lg p-6">
+          <CampaignContactsWrapper
+            campaign={campaign}
+            user={user}
+            initialContacts={campaign.contacts}
+          />
         </div>
       </div>
     </DashboardLayout>

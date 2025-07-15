@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { DashboardOverview } from '@/components/dashboard/DashboardOverview'
+import { DashboardTabs } from '@/components/dashboard/DashboardTabs'
 import { PipedriveApiKeyForm } from '@/components/PipedriveApiKeyForm'
 
 export default async function DashboardPage() {
@@ -32,7 +32,7 @@ export default async function DashboardPage() {
 
   return (
     <DashboardLayout user={user}>
-      <DashboardOverview user={user} />
+      <DashboardTabs user={user} />
       
       {/* Pipedrive Integration Section */}
       <div className="mt-8 bg-white overflow-hidden shadow rounded-lg">

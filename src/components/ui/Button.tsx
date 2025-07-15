@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { colors, typography, spacing, borderRadius, transitions } from '@/lib/design-tokens'
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'destructive'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   loading?: boolean
@@ -69,6 +69,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         'focus:ring-red-500',
         'border border-transparent',
       ],
+      variant === 'destructive' && [
+        'bg-red-600 text-white hover:bg-red-700',
+        'focus:ring-red-500',
+        'border border-transparent',
+      ],
       
       // Border radius
       'rounded-md',
@@ -124,7 +129,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         e.preventDefault()
         return
       }
-      onClick?.(e)
+      onClick?.()
     }
 
     return (

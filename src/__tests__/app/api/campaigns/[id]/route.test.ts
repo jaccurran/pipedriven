@@ -90,7 +90,22 @@ describe('/api/campaigns/[id]', () => {
       // Assert
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data).toEqual(campaignWithRelations)
+      
+      // Convert Date objects to strings for comparison since API serializes dates
+      const expectedData = {
+        ...campaignWithRelations,
+        startDate: '2024-01-01T00:00:00.000Z',
+        endDate: '2024-03-31T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        contacts: [{
+          ...mockContact,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        }],
+      }
+      
+      expect(data).toEqual(expectedData)
       expect(mockCampaignServiceInstance.getCampaignById).toHaveBeenCalledWith('campaign-123')
     })
 
@@ -150,7 +165,17 @@ describe('/api/campaigns/[id]', () => {
       // Assert
       expect(response.status).toBe(200)
       const data = await response.json()
-      expect(data).toEqual(updatedCampaign)
+      
+      // Convert Date objects to strings for comparison since API serializes dates
+      const expectedData = {
+        ...updatedCampaign,
+        startDate: '2024-01-01T00:00:00.000Z',
+        endDate: '2024-03-31T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      }
+      
+      expect(data).toEqual(expectedData)
       expect(mockCampaignServiceInstance.updateCampaign).toHaveBeenCalledWith('campaign-123', updateData)
     })
 

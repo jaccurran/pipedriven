@@ -15,7 +15,7 @@ const assignCampaignsSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -45,13 +45,14 @@ export async function POST(
     }
 
     // Create service instance and perform action
+    const { id } = await params
     const contactService = new ContactService()
     let contact
 
     if (validatedData.action === 'assign') {
-      contact = await contactService.assignContactToCampaigns(params.id, validatedData.campaignIds)
+      contact = await contactService.assignContactToCampaigns(id, validatedData.campaignIds)
     } else {
-      contact = await contactService.removeContactFromCampaigns(params.id, validatedData.campaignIds)
+      contact = await contactService.removeContactFromCampaigns(id, validatedData.campaignIds)
     }
 
     return NextResponse.json(contact)

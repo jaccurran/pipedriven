@@ -22,6 +22,19 @@ export function formatDate(date: Date | string): string {
 }
 
 /**
+ * Format a date to a readable string, handling null/undefined values
+ */
+export function formatDateSafe(date: Date | string | null | undefined): string {
+  if (!date) return 'Not set'
+  const d = new Date(date)
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+/**
  * Format a date and time to a readable string
  */
 export function formatDateTime(date: Date | string): string {

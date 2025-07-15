@@ -4,6 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { Contact, User } from '@prisma/client'
 import { Modal, Button, Input, Badge, Card } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { ContactForm } from './ContactForm'
 
 interface ContactSearchProps {
   isOpen: boolean
@@ -48,13 +49,6 @@ export function ContactSearch({
   const [isSearching, setIsSearching] = useState(false)
   const [pipedriveContacts, setPipedriveContacts] = useState<PipedriveContact[]>([])
   const [searchError, setSearchError] = useState<string | null>(null)
-  const [createFormData, setCreateFormData] = useState<CreateContactData>({
-    name: '',
-    email: '',
-    phone: '',
-    organisation: '',
-  })
-  const [formErrors, setFormErrors] = useState<Partial<CreateContactData>>({})
 
   // Filter local contacts based on search term
   const filteredLocalContacts = useMemo(() => {
@@ -133,40 +127,6 @@ export function ContactSearch({
     }
   }, [existingContacts])
 
-  // Handle create form submission
-  const handleCreateSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Validate form
-    const errors: Partial<CreateContactData> = {}
-    if (!createFormData.name.trim()) errors.name = 'Name is required'
-    if (!createFormData.email.trim()) errors.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createFormData.email)) {
-      errors.email = 'Invalid email format'
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors)
-      return
-    }
-
-    // Create contact
-    onCreate(createFormData)
-    
-    // Reset form
-    setCreateFormData({ name: '', email: '', phone: '', organisation: '' })
-    setFormErrors({})
-    setActiveTab('local')
-  }, [createFormData, onCreate])
-
-  // Handle form input changes
-  const handleFormChange = useCallback((field: keyof CreateContactData, value: string) => {
-    setCreateFormData(prev => ({ ...prev, [field]: value }))
-    if (formErrors[field]) {
-      setFormErrors(prev => ({ ...prev, [field]: undefined }))
-    }
-  }, [formErrors])
-
   // Handle contact import
   const handleImport = useCallback((contact: Contact | PipedriveContact) => {
     onImport(contact)
@@ -180,8 +140,6 @@ export function ContactSearch({
       setIsSearching(false)
       setPipedriveContacts([])
       setSearchError(null)
-      setCreateFormData({ name: '', email: '', phone: '', organisation: '' })
-      setFormErrors({})
     }
   }, [isOpen])
 
@@ -399,80 +357,16 @@ export function ContactSearch({
           {/* Create Contact Tab */}
           {activeTab === 'create' && (
             <div className="space-y-6">
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                    Name *
-                  </label>
-                  <Input
-                    id="name"
-                    type="text"
-                    value={createFormData.name}
-                    onChange={(value) => handleFormChange('name', value)}
-                    className={cn(formErrors.name && 'border-red-500')}
-                    aria-label="Name"
-                  />
-                  {formErrors.name && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                    Email *
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={createFormData.email}
-                    onChange={(value) => handleFormChange('email', value)}
-                    className={cn(formErrors.email && 'border-red-500')}
-                    aria-label="Email"
-                  />
-                  {formErrors.email && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                    Phone
-                  </label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={createFormData.phone}
-                    onChange={(value) => handleFormChange('phone', value)}
-                    aria-label="Phone"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="organisation" className="block text-sm font-medium text-gray-700">
-                    Organization
-                  </label>
-                  <Input
-                    id="organisation"
-                    type="text"
-                    value={createFormData.organisation}
-                    onChange={(value) => handleFormChange('organisation', value)}
-                    aria-label="Organization"
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setActiveTab('local')}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    Create Contact
-                  </Button>
-                </div>
-              </form>
+              <ContactForm
+                onSubmit={(values) => {
+                  onCreate(values)
+                  setActiveTab('local')
+                }}
+                onCancel={() => setActiveTab('local')}
+                submitLabel="Create Contact"
+                cancelLabel="Cancel"
+                mode="create"
+              />
             </div>
           )}
         </div>

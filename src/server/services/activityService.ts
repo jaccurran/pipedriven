@@ -67,17 +67,30 @@ export class ActivityService {
       throw new Error('User not found')
     }
 
-    // Create activity
-    const activity = await prisma.activity.create({
-      data,
-      include: {
-        contact: true,
-        user: true,
-        campaign: true,
-      },
+    // Create activity and update contact's lastContacted in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the activity
+      const activity = await tx.activity.create({
+        data,
+        include: {
+          contact: true,
+          user: true,
+          campaign: true,
+        },
+      })
+
+      // Update the contact's lastContacted field if this activity is for a contact
+      if (data.contactId) {
+        await tx.contact.update({
+          where: { id: data.contactId },
+          data: { lastContacted: new Date() },
+        })
+      }
+
+      return activity
     })
 
-    return activity
+    return result
   }
 
   async getActivities(filters: ActivityFilters): Promise<ActivityListResult> {

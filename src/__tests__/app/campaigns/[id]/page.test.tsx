@@ -85,7 +85,6 @@ describe('Campaign Detail Page', () => {
     expect(screen.getByText('Technology')).toBeInTheDocument()
     expect(screen.getByText('Digital Transformation')).toBeInTheDocument()
     expect(screen.getByText('50')).toBeInTheDocument() // Target leads
-    expect(screen.getByText('$10,000.00')).toBeInTheDocument() // Budget
   })
 
   it('should redirect to signin when user is not authenticated', async () => {

@@ -340,7 +340,7 @@ export function ContactDetailSlideover({
                 <Input
                   type="text"
                   value={meetingData.date}
-                  onChange={(e) => setMeetingData(prev => ({ ...prev, date: e.target.value }))}
+                  onChange={(value) => setMeetingData(prev => ({ ...prev, date: value }))}
                   placeholder="YYYY-MM-DD"
                   className="mt-1"
                 />
@@ -351,7 +351,7 @@ export function ContactDetailSlideover({
                 <Input
                   type="text"
                   value={meetingData.time}
-                  onChange={(e) => setMeetingData(prev => ({ ...prev, time: e.target.value }))}
+                  onChange={(value) => setMeetingData(prev => ({ ...prev, time: value }))}
                   placeholder="HH:MM"
                   className="mt-1"
                 />
@@ -362,7 +362,7 @@ export function ContactDetailSlideover({
                 <Input
                   type="text"
                   value={meetingData.notes}
-                  onChange={(e) => setMeetingData(prev => ({ ...prev, notes: e.target.value }))}
+                  onChange={(value) => setMeetingData(prev => ({ ...prev, notes: value }))}
                   placeholder="Meeting notes..."
                   className="mt-1"
                 />
@@ -398,7 +398,7 @@ export function ContactDetailSlideover({
               <Input
                 type="text"
                 value={meetingNotes}
-                onChange={(e) => setMeetingNotes(e.target.value)}
+                onChange={(value) => setMeetingNotes(value)}
                 placeholder="Enter meeting notes..."
                 className="mt-1"
               />

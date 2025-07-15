@@ -75,12 +75,15 @@ export async function POST(request: NextRequest) {
     let body
     try {
       body = await request.json()
+      console.log('Contact creation request body:', body)
     } catch (error) {
+      console.error('Failed to parse request body:', error)
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
     // Validate required fields
     if (!body.name) {
+      console.error('Missing required field: name')
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
@@ -88,7 +91,9 @@ export async function POST(request: NextRequest) {
     let validatedData
     try {
       validatedData = createContactSchema.parse(body)
+      console.log('Validated contact data:', validatedData)
     } catch (error) {
+      console.error('Contact validation failed:', error)
       return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
     }
 
@@ -100,6 +105,8 @@ export async function POST(request: NextRequest) {
       ])
     )
 
+    console.log('Clean contact data:', cleanData)
+
     // Create service instance and create contact
     const contactService = new ContactService()
     const contact = await contactService.createContact({
@@ -107,6 +114,7 @@ export async function POST(request: NextRequest) {
       userId: session.user.id,
     })
 
+    console.log('Created contact:', contact)
     return NextResponse.json(contact, { status: 201 })
   } catch (error) {
     console.error('Error in POST /api/contacts:', error)

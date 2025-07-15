@@ -3,12 +3,15 @@
 import React from 'react'
 import { Campaign } from '@prisma/client'
 import { Card } from '@/components/ui'
+import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
+import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 import { cn } from '@/lib/utils'
 
 interface CampaignCardProps {
   campaign: Campaign
   onEdit?: (campaign: Campaign) => void
   onDelete?: (campaign: Campaign) => void
+  onActivity?: (campaignId: string, actionType: ActionType | SecondaryActionType) => void
   onDragStart?: (e: React.DragEvent, campaignId: string) => void
   onDragEnd?: () => void
   isDragging?: boolean
@@ -19,6 +22,7 @@ export function CampaignCard({
   campaign,
   onEdit,
   onDelete,
+  onActivity,
   onDragStart,
   onDragEnd,
   isDragging = false,
@@ -40,6 +44,20 @@ export function CampaignCard({
       month: 'short',
       day: 'numeric',
     }).format(new Date(date))
+  }
+
+  // Handle primary action clicks
+  const handlePrimaryAction = (type: ActionType) => {
+    if (onActivity) {
+      onActivity(campaign.id, type)
+    }
+  }
+
+  // Handle secondary action clicks
+  const handleSecondaryAction = (type: SecondaryActionType) => {
+    if (onActivity) {
+      onActivity(campaign.id, type)
+    }
   }
 
   return (
@@ -119,10 +137,6 @@ export function CampaignCard({
             <span className="text-gray-500">Target:</span>
             <span className="ml-1 font-medium">{campaign.targetLeads}</span>
           </div>
-          <div>
-            <span className="text-gray-500">Budget:</span>
-            <span className="ml-1 font-medium">{formatCurrency(campaign.budget)}</span>
-          </div>
           <div className="col-span-2">
             <span className="text-gray-500">Duration:</span>
             <span className="ml-1 font-medium">
@@ -130,6 +144,44 @@ export function CampaignCard({
             </span>
           </div>
         </div>
+
+        {/* Action System */}
+        {onActivity && (
+          <div className="pt-3 border-t border-gray-100">
+            {/* Primary Actions - Responsive layout */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <QuickActionButton
+                type="EMAIL"
+                onClick={handlePrimaryAction}
+                contactName={campaign.name}
+                className="flex-1 sm:flex-none text-sm px-3 py-2 min-h-[44px]"
+                data-testid="email-action-button"
+              />
+              <QuickActionButton
+                type="MEETING_REQUEST"
+                onClick={handlePrimaryAction}
+                contactName={campaign.name}
+                className="flex-1 sm:flex-none text-sm px-3 py-2 min-h-[44px]"
+                data-testid="meeting-request-action-button"
+              />
+              <QuickActionButton
+                type="MEETING"
+                onClick={handlePrimaryAction}
+                contactName={campaign.name}
+                className="flex-1 sm:flex-none text-sm px-3 py-2 min-h-[44px]"
+                data-testid="meeting-action-button"
+              />
+            </div>
+            
+            {/* Secondary Actions - Right-aligned */}
+            <div className="flex justify-end">
+              <ActionMenu
+                onAction={handleSecondaryAction}
+                contactName={campaign.name}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   )

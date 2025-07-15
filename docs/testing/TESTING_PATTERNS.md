@@ -50,6 +50,388 @@ Our testing journey revealed several critical mistakes that wasted significant t
 
 ---
 
+### 🆕 Lessons Learned from Multiple Elements Query Issues
+
+#### 1. Handling Multiple Elements with the Same Label or Role
+- **Always use unique labels within a form:**
+  - If you must repeat a label, add context: e.g., "Note (Internal)", "Note (External)".
+  - Example:
+    ```typescript
+    // ✅ GOOD: Unique labels
+    <label htmlFor="note-textarea">Note</label>
+    <textarea id="note-textarea" />
+    
+    // ✅ GOOD: Contextual labels when needed
+    <label htmlFor="internal-note">Note (Internal)</label>
+    <textarea id="internal-note" />
+    <label htmlFor="external-note">Note (External)</label>
+    <textarea id="external-note" />
+    ```
+
+#### 2. Scoped Queries with `within`
+- **Use `within` to scope queries to specific containers:**
+  - When multiple forms/components exist on a page, scope queries to the relevant container.
+  - Example:
+    ```typescript
+    // ✅ GOOD: Scoped query
+    const form = screen.getByTestId('note-form');
+    const textarea = within(form).getByLabelText('Note');
+    
+    // ❌ BAD: Ambiguous query
+    const textarea = screen.getByLabelText('Note'); // May find multiple elements
+    ```
+
+#### 3. Query Priority Pattern
+- **Follow this priority order for queries:**
+  1. `getByLabelText` with unique label
+  2. `within(container).getByLabelText` with scoped query
+  3. `getByRole` with specific name/description
+  4. `within(container).getByRole` with scoped query
+  5. `getByTestId` as last resort (document why)
+  
+  Example:
+  ```typescript
+  // Priority 1: Unique label
+  const input = screen.getByLabelText('Note');
+  
+  // Priority 2: Scoped query
+  const form = screen.getByTestId('note-form');
+  const input = within(form).getByLabelText('Note');
+  
+  // Priority 3: Specific role
+  const button = screen.getByRole('button', { name: 'Submit Note' });
+  
+  // Priority 4: Scoped role
+  const form = screen.getByTestId('note-form');
+  const button = within(form).getByRole('button', { name: 'Submit' });
+  
+  // Priority 5: Test ID (document why)
+  const input = screen.getByTestId('note-textarea'); // Used because multiple forms have same label
+  ```
+
+#### 4. Component Structure for Testable Forms
+- **Add `data-testid` to form containers:**
+  - Always add `data-testid` to the form element for scoping queries.
+  - Example:
+    ```typescript
+    // ✅ GOOD: Testable form structure
+    <form data-testid="note-form" onSubmit={handleSubmit}>
+      <label htmlFor="note-textarea">Note</label>
+      <textarea 
+        id="note-textarea"
+        data-testid="note-textarea"
+        {...props}
+      />
+      <button type="submit" data-testid="submit-button">Submit</button>
+    </form>
+    ```
+
+#### 5. Test Template for Forms with Potential Ambiguity
+- **Use this pattern for forms that might have multiple instances:**
+  ```typescript
+  describe('NoteForm', () => {
+    it('should submit form with valid data', async () => {
+      const mockOnSubmit = jest.fn();
+      render(<NoteForm onSubmit={mockOnSubmit} />);
+      
+      // Use scoped queries to avoid ambiguity
+      const form = screen.getByTestId('note-form');
+      const textarea = within(form).getByLabelText('Note');
+      const submitButton = within(form).getByRole('button', { name: /submit/i });
+      
+      // Test implementation...
+    });
+  });
+  ```
+
+#### 6. Common Anti-Patterns to Avoid
+- **Don't use `aria-label` when you have a proper label:**
+  - `aria-label` can create ambiguity with `htmlFor` labels.
+  - Prefer `htmlFor` + `id` association for form fields.
+  
+- **Don't rely on text content for queries:**
+  - Text content can change and create brittle tests.
+  - Use semantic queries (`getByLabelText`, `getByRole`) instead.
+  
+- **Don't use index-based queries:**
+  - `getAllByRole('button')[0]` is fragile and unclear.
+  - Use specific queries or scoping instead.
+
+---
+
+### 🆕 Lessons Learned from Form Validation Testing (DateLogForm)
+
+#### 1. Form Validation UX Patterns
+- **Allow submission to trigger validation:**
+  - Disabled submit buttons prevent validation from running. Instead, allow form submission and use validation to prevent the `onSubmit` callback.
+  - This provides better UX as users see validation errors immediately when they try to submit.
+  - Example:
+    ```typescript
+    // ✅ GOOD: Allow submission, validate in handler
+    <Button type="submit" disabled={isLoading}>
+      Submit
+    </Button>
+    
+    const handleSubmit = (e) => {
+      e.preventDefault()
+      if (validateForm()) {
+        onSubmit(data)
+      }
+    }
+    
+    // ❌ BAD: Disabled button prevents validation
+    <Button type="submit" disabled={!isFormValid || isLoading}>
+      Submit
+    </Button>
+    ```
+
+#### 2. Validation Error Persistence
+- **Don't clear errors immediately on input change:**
+  - Only clear validation errors when the user actually fixes the issue, not when they start typing.
+  - This prevents errors from disappearing before the user can see them.
+  - Example:
+    ```typescript
+    // ✅ GOOD: Only clear when valid
+    const handleDateChange = (e) => {
+      const newDate = e.target.value
+      setDate(newDate)
+      
+      if (newDate.trim() && errors.date) {
+        const selectedDate = new Date(newDate)
+        const today = new Date()
+        if (selectedDate <= today) {
+          setErrors(prev => ({ ...prev, date: undefined }))
+        }
+      }
+    }
+    
+    // ❌ BAD: Clears error immediately
+    const handleDateChange = (e) => {
+      setDate(e.target.value)
+      if (errors.date) {
+        setErrors(prev => ({ ...prev, date: undefined }))
+      }
+    }
+    ```
+
+#### 3. Test Isolation with Multiple Renders
+- **Use `getAllByTestId` for precise element selection:**
+  - When tests might render multiple instances, use `getAllByTestId()[0]` to ensure you're testing the correct element.
+  - Always assert that exactly one element exists to catch unintended multiple renders.
+  - Example:
+    ```typescript
+    // ✅ GOOD: Precise selection with validation
+    const submitButton = screen.getAllByTestId('submit-button')[0]
+    expect(screen.getAllByTestId('submit-button')).toHaveLength(1)
+    
+    // ❌ BAD: Ambiguous selection
+    const submitButton = screen.getByTestId('submit-button')
+    ```
+
+#### 4. Form Field Clearing in Tests
+- **Clear pre-filled fields before testing empty validation:**
+  - Components that pre-fill fields (like today's date) need explicit clearing in tests.
+  - Use `userEvent.clear()` before testing validation of empty fields.
+  - Example:
+    ```typescript
+    // ✅ GOOD: Clear pre-filled field
+    const dateInput = screen.getByLabelText(/date/i)
+    await user.clear(dateInput)
+    await user.click(submitButton)
+    
+    await waitFor(() => {
+      expect(screen.getByText(/date is required/i)).toBeInTheDocument()
+    })
+    ```
+
+#### 5. Error Message Rendering Logic
+- **Only render error messages when they exist:**
+  - Use conditional rendering with proper checks for non-empty strings.
+  - Test both the presence and absence of error messages.
+
+---
+
+### 🆕 Lessons Learned from Controlled Component Testing (AddContactModal)
+
+#### 1. Input Event Handling Differences
+- **`userEvent.type()` vs `fireEvent.change()` behavior:**
+  - `userEvent.type()` calls `onChange` for each individual character: `['t', 'e', 's', 't']`
+  - `fireEvent.change()` calls `onChange` once with the final value: `['test']`
+  - Use `fireEvent.change()` for testing controlled components that expect the final accumulated value
+  - Use `userEvent.type()` for testing real user interaction patterns
+  - Example:
+    ```typescript
+    // ✅ GOOD: For testing final value
+    fireEvent.change(input, { target: { value: 'test' } })
+    expect(mockOnChange).toHaveBeenCalledWith('test')
+    
+    // ✅ GOOD: For testing user interaction
+    await userEvent.type(input, 'test')
+    expect(mockOnChange).toHaveBeenLastCalledWith('test')
+    ```
+
+#### 2. Controlled Component State Updates
+- **Always wait for state updates in tests:**
+  - Use `waitFor()` to ensure state changes have propagated before making assertions
+  - Don't rely on immediate state updates after firing events
+  - Example:
+    ```typescript
+    // ✅ GOOD: Wait for state update
+    fireEvent.change(input, { target: { value: 'Alice' } })
+    await waitFor(() => {
+      expect(screen.getByText('Alice Johnson')).toBeInTheDocument()
+    })
+    
+    // ❌ BAD: Immediate assertion
+    fireEvent.change(input, { target: { value: 'Alice' } })
+    expect(screen.getByText('Alice Johnson')).toBeInTheDocument() // May fail
+    ```
+
+#### 3. Input Value Binding Debugging
+- **Check both `value` and `getAttribute('value')` in tests:**
+  - When debugging controlled component issues, log both properties
+  - `input.value` shows the current DOM value
+  - `input.getAttribute('value')` shows the HTML attribute value
+  - Example:
+    ```typescript
+    console.log('[TEST] input.value =', input.value)
+    console.log('[TEST] input.getAttribute("value") =', input.getAttribute('value'))
+    ```
+
+#### 4. Component State Isolation
+- **Reset mocks between test phases:**
+  - When testing multiple interactions in the same test, clear mocks between phases
+  - Use `mockOnSelect.mockClear()` to ensure clean state
+  - Example:
+    ```typescript
+    // First test phase
+    await userEvent.click(screen.getByText('Charlie Pipedrive'))
+    expect(mockOnSelect).toHaveBeenCalledWith(mockPipedriveContacts[0])
+    
+    // Reset for second phase
+    mockOnSelect.mockClear()
+    
+    // Second test phase
+    fireEvent.change(input, { target: { value: 'Alice' } })
+    await waitFor(() => {
+      expect(screen.getByText('Alice Johnson')).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByText('Alice Johnson'))
+    expect(mockOnSelect).toHaveBeenCalledWith(mockLocalContacts[0])
+    ```
+
+#### 5. Debug Logging Strategy
+- **Add comprehensive debug logs during development:**
+  - Log state changes, prop updates, and event handlers
+  - Use consistent prefixes for easy filtering: `[ComponentName]`, `[TEST]`
+  - Remove debug logs before committing (or keep them in development builds)
+  - Example:
+    ```typescript
+    // In component
+    console.log("[AddContactModal] render: searchQuery=", searchQuery)
+    console.log("[AddContactModal] onChange: value=", value)
+    
+    // In test
+    console.log('[TEST] After typing "Alice": input.value =', input.value)
+    ```
+
+#### 6. Test Environment Consistency
+- **Use consistent event firing patterns:**
+  - Choose between `userEvent` and `fireEvent` based on what you're testing
+  - Document the choice and reasoning in test comments
+  - Be consistent across similar tests in the same file
+  - Example:
+    ```typescript
+    // For testing final values (controlled components)
+    fireEvent.change(input, { target: { value: 'test' } })
+    
+    // For testing user interactions (realistic behavior)
+    await userEvent.type(input, 'test')
+    ```
+
+#### 7. Component Re-render Patterns
+- **Understand when components re-render:**
+  - State changes trigger re-renders
+  - Prop changes trigger re-renders
+  - Event handlers may cause multiple re-renders
+  - Use `waitFor()` to handle asynchronous re-renders
+  - Example:
+    ```typescript
+    // Component re-renders after state change
+    setSearchQuery(value) // Triggers re-render
+    // Wait for re-render to complete
+    await waitFor(() => {
+      expect(screen.getByText('Filtered Result')).toBeInTheDocument()
+    })
+    ```
+  - Example:
+    ```typescript
+    // ✅ GOOD: Conditional error rendering
+    {(typeof error === 'string' && error.trim()) && (
+      <div className="rounded-md bg-red-50 p-4">
+        <p className="text-sm text-red-600">{error}</p>
+      </div>
+    )}
+    
+    // Test both cases
+    it('should display error message when provided', () => {
+      render(<Component error="Failed to log activity" />)
+      expect(screen.getByText('Failed to log activity')).toBeInTheDocument()
+    })
+    
+    it('should not display error message when not provided', () => {
+      render(<Component />)
+      expect(screen.queryByText('Failed to log activity')).not.toBeInTheDocument()
+    })
+    ```
+
+#### 6. Test Structure for Form Components
+- **Group tests by user behavior, not technical implementation:**
+  - Use descriptive test names that explain the user's goal, not the technical validation.
+  - Example:
+    ```typescript
+    // ✅ GOOD: User-focused test names
+    describe('Form Validation', () => {
+      it('should show error when date field is empty', async () => {})
+      it('should show error when date is in the future', async () => {})
+      it('should not show errors when form is valid', async () => {})
+    })
+    
+    describe('Form Submission', () => {
+      it('should call onSubmit with form data when form is valid', async () => {})
+      it('should not call onSubmit when form is invalid', async () => {})
+      it('should allow submission when form is invalid to trigger validation', async () => {})
+    })
+    ```
+
+---
+
+## UI Component Testing: Custom Selects, Dropdowns, and Info Containers
+
+### Key Lessons from ActivityForm and Similar Components
+
+- **Simulate Real User Interaction:**
+  - For custom Select/dropdown components, always open the dropdown with `userEvent.click` and select options using `getByRole('option')`.
+  - Do not use `fireEvent.change` on custom selects; it only works for native elements.
+- **Query for Rendered State:**
+  - When options or info containers are only visible after interaction, open the dropdown or trigger the UI state before asserting.
+- **Handle Split Text and Ambiguous Queries:**
+  - If text is split across elements (e.g., name and organisation), use a function matcher or check the combined `textContent`, or use `getAllByRole('option')` and check `.textContent`.
+- **Use data-testid for Robust Selection:**
+  - Add `data-testid` to info containers or ambiguous elements and use `getByTestId` for robust, unambiguous selection.
+- **Prefer Specific Queries:**
+  - Use the most specific queries possible (`getByRole` with name, `getByTestId`) to avoid ambiguous matches.
+- **Test Only What Is Rendered:**
+  - Do not assert for dropdown options or info containers unless the UI state makes them visible.
+- **Test Error and Edge Cases:**
+  - Simulate error conditions (e.g., rejected promises) and assert for error messages in the UI.
+- **Test Cleanup and Isolation:**
+  - Use `afterEach(cleanup)` and reset mocks to avoid test interference.
+- **Test Structure:**
+  - Group tests by behavior, not implementation, and use realistic test data and factories.
+
+> See the ActivityForm test suite for a model of these patterns in practice.
+
 ## 📋 Pre-Testing Analysis Checklist
 
 **BEFORE writing any tests, complete this analysis:**
@@ -569,3 +951,77 @@ vi.mock("@/components/MyComponent", () => ({
   ```
 
 --- 
+
+## Date Handling in Tests
+
+### Problem: Test Environment Date Mocking
+When testing components that use `new Date()` or date calculations, the test environment may have date mocking that causes unexpected behavior.
+
+**Symptoms:**
+- `new Date()` returns a future date (e.g., 2025-07-12) instead of current date
+- Date validation tests fail because "today" is actually a future date
+- Form validation errors appear when they shouldn't
+
+**Solution: Use Hardcoded Dates for Testing**
+```tsx
+// ❌ Don't rely on current date in tests
+const today = new Date().toISOString().split('T')[0]
+
+// ✅ Use hardcoded valid dates for testing
+const defaultProps = {
+  initialDate: '2024-12-31', // Hardcoded valid date
+  // ... other props
+}
+```
+
+**Best Practices:**
+1. **Component Props:** Add optional `initialDate` prop for testing
+2. **Test Data:** Use hardcoded dates instead of `new Date()` calculations
+3. **Validation:** Test with known valid/invalid dates rather than relative dates
+4. **Documentation:** Document when date mocking affects tests
+
+**Example Implementation:**
+```tsx
+interface ComponentProps {
+  // ... other props
+  initialDate?: string // For testing purposes
+}
+
+const [formData, setFormData] = useState(() => ({
+  date: initialDate || getTodayDate(), // Use prop or fallback
+  // ... other fields
+}))
+```
+
+### Test Patterns for Date Components
+```tsx
+describe('Date Component', () => {
+  const defaultProps = {
+    initialDate: '2024-12-31', // Valid past date
+    // ... other props
+  }
+
+  it('should pre-fill with valid date', () => {
+    render(<DateComponent {...defaultProps} />)
+    expect(screen.getByLabelText(/date/i)).toHaveValue('2024-12-31')
+  })
+
+  it('should validate future dates', async () => {
+    const user = userEvent.setup()
+    render(<DateComponent {...defaultProps} />)
+    
+    const dateField = screen.getByLabelText(/date/i)
+    await user.clear(dateField)
+    await user.type(dateField, '2025-12-31') // Future date
+    
+    // Test validation logic
+  })
+})
+``` 
+
+## Lessons Learnt: Reliable Form Submission in Tests
+
+- When testing form validation and error rendering in React Testing Library, prefer `fireEvent.submit(form)` over clicking the submit button. This ensures the form's `onSubmit` handler is reliably triggered, especially in custom or styled button scenarios.
+- Clicking the submit button may not always trigger the form's submit event in the test environment, leading to tests that fail to detect validation errors or form state changes.
+- **Pattern:** Always select the form element (e.g., `const form = screen.getByTestId('contact-form')`) and use `fireEvent.submit(form)` to trigger validation and error rendering.
+- Update existing and future tests to use this approach for consistent and reliable results. 

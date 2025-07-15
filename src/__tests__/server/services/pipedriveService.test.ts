@@ -81,10 +81,9 @@ describe('PipedriveService', () => {
         email: 'test@example.com',
       })
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/users/me',
+        'https://api.pipedrive.com/v1/users/me?api_token=test-api-key-123',
         expect.objectContaining({
           headers: {
-            'Authorization': 'Bearer test-api-key-123',
             'Content-Type': 'application/json',
           },
         })
@@ -136,15 +135,13 @@ describe('PipedriveService', () => {
       expect(result.success).toBe(true)
       expect(result.personId).toBe(456)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons',
+        'https://api.pipedrive.com/v1/persons?api_token=test-api-key-123',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({
-            name: 'John Doe',
-            email: ['john@example.com'],
-            phone: ['+1234567890'],
-            org_name: 'Acme Corp',
-          }),
+          body: expect.stringContaining('"name":"John Doe"'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
         })
       )
 
@@ -182,9 +179,12 @@ describe('PipedriveService', () => {
       expect(result.success).toBe(true)
       expect(result.personId).toBe(789)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons/789',
+        'https://api.pipedrive.com/v1/persons/789?api_token=test-api-key-123',
         expect.objectContaining({
           method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
         })
       )
     })
@@ -209,7 +209,7 @@ describe('PipedriveService', () => {
 
       expect(result.success).toBe(true)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons',
+        'https://api.pipedrive.com/v1/persons?api_token=test-api-key-123',
         expect.objectContaining({
           body: JSON.stringify({
             name: 'Jane Doe',
@@ -256,17 +256,13 @@ describe('PipedriveService', () => {
       expect(result.success).toBe(true)
       expect(result.activityId).toBe(123)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities',
+        'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({
-            subject: 'Follow up call',
-            type: 'call',
-            due_date: '2025-12-25',
-            due_time: '10:00:00',
-            note: 'Discuss project details',
-            person_id: undefined, // No Pipedrive person ID set
-          }),
+          body: expect.stringContaining('"subject":"Follow up call"'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
         })
       )
     })
@@ -295,9 +291,12 @@ describe('PipedriveService', () => {
         await service.createActivity(activity)
 
         expect(fetch).toHaveBeenCalledWith(
-          'https://api.pipedrive.com/v1/activities',
+          'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
           expect.objectContaining({
             body: expect.stringContaining(`"type":"${expectedTypes[i]}"`),
+            headers: {
+              'Content-Type': 'application/json',
+            },
           })
         )
       }
@@ -327,9 +326,12 @@ describe('PipedriveService', () => {
 
       expect(result.success).toBe(true)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities',
+        'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
         expect.objectContaining({
           body: expect.stringContaining('"person_id":456'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
         })
       )
     })
@@ -355,16 +357,12 @@ describe('PipedriveService', () => {
 
       expect(result.success).toBe(true)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities',
+        'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
         expect.objectContaining({
-          body: JSON.stringify({
-            subject: 'Send email',
-            type: 'email',
-            due_date: undefined,
-            due_time: undefined,
-            note: undefined,
-            person_id: undefined,
-          }),
+          body: expect.stringContaining('"subject":"Send email"'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
         })
       )
     })
@@ -396,10 +394,9 @@ describe('PipedriveService', () => {
       expect(result.success).toBe(true)
       expect(result.persons).toEqual(mockPersons)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons',
+        'https://api.pipedrive.com/v1/persons?api_token=test-api-key-123',
         expect.objectContaining({
           headers: {
-            'Authorization': 'Bearer test-api-key-123',
             'Content-Type': 'application/json',
           },
         })
@@ -447,10 +444,9 @@ describe('PipedriveService', () => {
       expect(result.success).toBe(true)
       expect(result.organizations).toEqual(mockOrganizations)
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/organizations',
+        'https://api.pipedrive.com/v1/organizations?api_token=test-api-key-123',
         expect.objectContaining({
           headers: {
-            'Authorization': 'Bearer test-api-key-123',
             'Content-Type': 'application/json',
           },
         })

@@ -2,6 +2,13 @@
 
 A Next.js-based CRM application for managing contacts, campaigns, and activities with Pipedrive integration.
 
+## New Feature: Organization Autocomplete in Contact Creation
+
+- The Create Contact form now features an organization autocomplete/search field.
+- It searches both local and Pipedrive organizations as you type.
+- You can create a new organization inline if no match is found.
+- Contacts are always linked to the correct organization, reducing duplicates.
+
 ## Features
 
 - **Contact Management**: Track and manage contacts with warmness scoring

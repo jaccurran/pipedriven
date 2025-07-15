@@ -63,19 +63,42 @@ export class PipedriveService {
   /**
    * Test the Pipedrive API connection
    */
-  async testConnection(): Promise<{ success: boolean; user?: any; error?: string }> {
-    const result = await this.makeApiRequest('/users/me')
+  async testConnection(): Promise<{ success: boolean; user?: any; error?: string; diagnostics?: any }> {
+    const startTime = Date.now()
+    
+    const result = await this.makeApiRequest('/users/me', {}, {
+      endpoint: '/users/me',
+      method: 'GET',
+      testConnection: true,
+    })
+    
+    const responseTime = Date.now() - startTime
     
     if (result.success) {
       return {
         success: true,
         user: result.data?.data,
+        diagnostics: {
+          responseTime: `${responseTime}ms`,
+          timestamp: new Date().toISOString(),
+          apiVersion: 'v1',
+          endpoint: '/users/me',
+          ...result.diagnostics,
+        }
       }
     }
     
     return {
       success: false,
       error: result.error || 'Failed to connect to Pipedrive API',
+      diagnostics: {
+        responseTime: `${responseTime}ms`,
+        timestamp: new Date().toISOString(),
+        apiVersion: 'v1',
+        endpoint: '/users/me',
+        errorType: result.error ? 'API Error' : 'Network Error',
+        ...result.diagnostics,
+      }
     }
   }
 
@@ -295,6 +318,84 @@ export class PipedriveService {
   }
 
   /**
+   * Search organizations in Pipedrive by name
+   */
+  async searchOrganizations(query: string): Promise<{ success: boolean; organizations?: PipedriveOrganization[]; error?: string }> {
+    try {
+      const result = await this.makeApiRequest(`/organizations/search?term=${encodeURIComponent(query)}`, {}, {
+        endpoint: '/organizations/search',
+        method: 'GET',
+        searchQuery: query,
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to search organizations from Pipedrive',
+        }
+      }
+
+      const organizations = result.data?.data?.items || []
+      
+      // Transform the search results to match our PipedriveOrganization interface
+      const transformedOrganizations = organizations.map((item: any) => ({
+        id: item.item.id,
+        name: item.item.name,
+        address: item.item.address,
+        created: item.item.created,
+        updated: item.item.updated,
+      }))
+
+      return {
+        success: true,
+        organizations: transformedOrganizations,
+      }
+    } catch (error) {
+      console.error('Pipedrive search error:', error)
+      return {
+        success: false,
+        error: 'Failed to search organizations from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Search persons in Pipedrive by name or email
+   */
+  async searchPersons(query: string): Promise<PipedrivePerson[]> {
+    try {
+      // Search by name
+      const nameResult = await this.makeApiRequest(`/persons/search?term=${encodeURIComponent(query)}`, {}, {
+        endpoint: '/persons/search',
+        method: 'GET',
+        searchQuery: query,
+      })
+
+      if (!nameResult.success) {
+        console.error('Pipedrive search failed:', nameResult.error)
+        return []
+      }
+
+      const persons = nameResult.data?.data?.items || []
+      
+      // Transform the search results to match our PipedrivePerson interface
+      return persons.map((item: any) => ({
+        id: item.item.id,
+        name: item.item.name,
+        email: item.item.email || [],
+        phone: item.item.phone || [],
+        org_name: item.item.org_name,
+        org_id: item.item.org_id,
+        created: item.item.created,
+        updated: item.item.updated,
+      }))
+    } catch (error) {
+      console.error('Pipedrive search error:', error)
+      return []
+    }
+  }
+
+  /**
    * Map internal activity type to Pipedrive activity type
    */
   private mapActivityType(type: ActivityType): string {
@@ -367,11 +468,13 @@ export class PipedriveService {
     endpoint: string,
     options: RequestInit = {},
     context: Record<string, any> = {}
-  ): Promise<{ success: boolean; data?: any; error?: string }> {
-    const url = `${this.baseUrl}${endpoint}`
+  ): Promise<{ success: boolean; data?: any; error?: string; diagnostics?: any }> {
+    // Use query parameter authentication instead of Bearer token
+    const separator = endpoint.includes('?') ? '&' : '?'
+    const url = `${this.baseUrl}${endpoint}${separator}api_token=${this.apiKey}`
+    
     const requestOptions: RequestInit = {
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },
@@ -394,6 +497,11 @@ export class PipedriveService {
             return {
               success: false,
               error: 'Rate limit exceeded',
+              diagnostics: {
+                retryAfter: retryAfter,
+                attempt,
+                ...context,
+              }
             }
           }
           
@@ -402,6 +510,10 @@ export class PipedriveService {
             return {
               success: false,
               error: 'API key expired',
+              diagnostics: {
+                attempt,
+                ...context,
+              }
             }
           }
 
@@ -420,32 +532,43 @@ export class PipedriveService {
           return {
             success: false,
             error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+            diagnostics: {
+              attempt,
+              ...context,
+            }
           }
         }
 
         const data = await response.json()
-        return { success: true, data }
+        return { success: true, data, diagnostics: { attempt, ...context } }
 
       } catch (error) {
-        if (pipedriveConfig.enableDetailedLogging) {
-          console.error('Pipedrive API error:', error)
-        }
+        console.error(`Pipedrive API request failed (attempt ${attempt}):`, error)
         
-        if (attempt > maxRetries) {
+        if (attempt <= maxRetries) {
+          const delay = pipedriveConfig.retryDelay * Math.pow(2, attempt - 1)
+          console.log(`Retrying in ${delay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        } else {
           return {
             success: false,
             error: 'Failed to connect to Pipedrive API',
+            diagnostics: {
+              attempt,
+              ...context,
+            }
           }
         }
-        
-        // Wait before retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, pipedriveConfig.retryDelay * attempt))
       }
     }
 
     return {
       success: false,
       error: 'Max retries exceeded',
+      diagnostics: {
+        attempt: maxRetries + 1,
+        ...context,
+      }
     }
   }
 }

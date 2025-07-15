@@ -51,7 +51,6 @@ describe('CampaignForm', () => {
     expect(screen.getByLabelText(/start date/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/end date/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/target leads/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/budget/i)).toBeInTheDocument()
   })
 
   it('populates form with campaign data when editing', () => {
@@ -60,15 +59,14 @@ describe('CampaignForm', () => {
     expect(screen.getByDisplayValue('Q1 Lead Generation')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Generate leads for Q1 sales')).toBeInTheDocument()
     expect(screen.getByDisplayValue('100')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('5000')).toBeInTheDocument()
   })
 
   it('validates required fields', async () => {
     const mockOnSubmit = vi.fn()
     render(<CampaignForm user={mockUser} onSubmit={mockOnSubmit} />)
     
-    const submitButton = screen.getByRole('button', { name: /save campaign/i })
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('campaign-form')
+    fireEvent.submit(form)
     
     await waitFor(() => {
       expect(screen.getByText(/campaign name is required/i)).toBeInTheDocument()
@@ -96,8 +94,8 @@ describe('CampaignForm', () => {
       target: { value: '2025-02-01' },
     })
     
-    const submitButton = screen.getByRole('button', { name: /save campaign/i })
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('campaign-form')
+    fireEvent.submit(form)
     
     await waitFor(() => {
       expect(screen.getByText(/end date must be after start date/i)).toBeInTheDocument()
@@ -129,12 +127,9 @@ describe('CampaignForm', () => {
     fireEvent.change(screen.getByLabelText(/target leads/i), {
       target: { value: '100' },
     })
-    fireEvent.change(screen.getByLabelText(/budget/i), {
-      target: { value: '5000' },
-    })
     
-    const submitButton = screen.getByRole('button', { name: /save campaign/i })
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('campaign-form')
+    fireEvent.submit(form)
     
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith({
@@ -144,7 +139,6 @@ describe('CampaignForm', () => {
         startDate: '2025-01-01',
         endDate: '2025-03-31',
         targetLeads: 100,
-        budget: 5000,
       })
     })
   })
@@ -164,10 +158,11 @@ describe('CampaignForm', () => {
       target: { value: '2025-03-31' },
     })
     
-    const submitButton = screen.getByRole('button', { name: /save campaign/i })
-    fireEvent.click(submitButton)
+    const form = screen.getByTestId('campaign-form')
+    fireEvent.submit(form)
     
     expect(screen.getByText(/saving/i)).toBeInTheDocument()
+    const submitButton = screen.getByRole('button', { name: /saving/i })
     expect(submitButton).toBeDisabled()
   })
 

@@ -1,105 +1,138 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { CampaignService } from '@/server/services/campaignService'
 import { getServerSession } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
 
-function validateContactIds(body: any): { isValid: boolean; error?: string } {
-  if (!body.contactIds) {
-    return { isValid: false, error: 'contactIds is required' }
-  }
-
-  if (!Array.isArray(body.contactIds)) {
-    return { isValid: false, error: 'contactIds must be an array' }
-  }
-
-  if (body.contactIds.length === 0) {
-    return { isValid: false, error: 'contactIds array cannot be empty' }
-  }
-
-  if (!body.contactIds.every((id: any) => typeof id === 'string')) {
-    return { isValid: false, error: 'All contactIds must be strings' }
-  }
-
-  return { isValid: true }
-}
+const assignContactsSchema = z.object({
+  contactIds: z.array(z.string()),
+})
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Parse request body
     let body
     try {
       body = await request.json()
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid JSON' },
-        { status: 400 }
-      )
-    }
-
-    // Validate contactIds
-    const validation = validateContactIds(body)
-    if (!validation.isValid) {
-      return NextResponse.json(
-        { error: validation.error },
-        { status: 400 }
-      )
-    }
-
-    try {
-      const campaignService = new CampaignService()
-      const result = await campaignService.assignContactsToCampaign(params.id, body.contactIds)
-      return NextResponse.json(result)
     } catch (error) {
-      if (error instanceof Error && error.message === 'Some contacts not found') {
-        return NextResponse.json(
-          { error: 'Some contacts not found' },
-          { status: 400 }
-        )
-      }
-      throw error
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
+
+    // Validate request data
+    let validatedData
+    try {
+      validatedData = assignContactsSchema.parse(body)
+    } catch (error) {
+      console.error('Validation error in POST /api/campaigns/[id]/assign-contacts:', error)
+      return NextResponse.json({ error: 'Validation failed', details: error }, { status: 400 })
+    }
+
+    const { id: campaignId } = await params
+
+    // Check if campaign exists and user has access
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { users: true },
+    })
+
+    if (!campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    const hasAccess = campaign.users.some(user => user.id === session.user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Add contacts to campaign
+    const result = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        contacts: {
+          connect: validatedData.contactIds.map(contactId => ({ id: contactId })),
+        },
+      },
+      include: {
+        contacts: true,
+      },
+    })
+
+    return NextResponse.json(result, { status: 200 })
   } catch (error) {
-    console.error('Error assigning contacts to campaign:', error)
-    return NextResponse.json(
-      { error: 'Failed to assign contacts to campaign' },
-      { status: 500 }
-    )
+    console.error('Error in POST /api/campaigns/[id]/assign-contacts:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Parse request body
     let body
     try {
       body = await request.json()
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid JSON' },
-        { status: 400 }
-      )
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
-    // Validate contactIds
-    const validation = validateContactIds(body)
-    if (!validation.isValid) {
-      return NextResponse.json(
-        { error: validation.error },
-        { status: 400 }
-      )
+    // Validate request data
+    let validatedData
+    try {
+      validatedData = assignContactsSchema.parse(body)
+    } catch (error) {
+      console.error('Validation error in DELETE /api/campaigns/[id]/assign-contacts:', error)
+      return NextResponse.json({ error: 'Validation failed', details: error }, { status: 400 })
     }
 
-    const campaignService = new CampaignService()
-    const result = await campaignService.removeContactsFromCampaign(params.id, body.contactIds)
-    return NextResponse.json(result)
+    const { id: campaignId } = await params
+
+    // Check if campaign exists and user has access
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: { users: true },
+    })
+
+    if (!campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    const hasAccess = campaign.users.some(user => user.id === session.user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Remove contacts from campaign
+    const result = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        contacts: {
+          disconnect: validatedData.contactIds.map(contactId => ({ id: contactId })),
+        },
+      },
+      include: {
+        contacts: true,
+      },
+    })
+
+    return NextResponse.json(result, { status: 200 })
   } catch (error) {
-    console.error('Error removing contacts from campaign:', error)
-    return NextResponse.json(
-      { error: 'Failed to remove contacts from campaign' },
-      { status: 500 }
-    )
+    console.error('Error in DELETE /api/campaigns/[id]/assign-contacts:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

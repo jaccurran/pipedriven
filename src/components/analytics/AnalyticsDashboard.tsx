@@ -170,6 +170,7 @@ export function AnalyticsDashboard({ userId, className = '' }: AnalyticsDashboar
             />
 
             <DatePicker
+              value={customStartDate}
               selected={customStartDate}
               onChange={setCustomStartDate}
               placeholderText="Custom start date"
@@ -178,6 +179,7 @@ export function AnalyticsDashboard({ userId, className = '' }: AnalyticsDashboar
             />
 
             <DatePicker
+              value={customEndDate}
               selected={customEndDate}
               onChange={setCustomEndDate}
               placeholderText="Custom end date"

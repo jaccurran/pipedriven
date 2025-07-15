@@ -10,6 +10,13 @@ export interface CardProps {
   children: React.ReactNode
   onClick?: () => void
   className?: string
+  draggable?: boolean
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void
+  onDragEnd?: () => void
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void
+  'data-testid'?: string
+  'aria-label'?: string
+  tabIndex?: number
 }
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(

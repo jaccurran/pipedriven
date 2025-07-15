@@ -8,13 +8,14 @@ import type { ActivityType } from '@prisma/client'
 const createActivitySchema = z.object({
   type: z.enum(['EMAIL', 'CALL', 'MEETING', 'LINKEDIN', 'REFERRAL', 'CONFERENCE']),
   subject: z.string().optional(),
-  note: z.string().optional(),
-  dueDate: z.string().refine((val) => {
+  note: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional().refine((val) => {
+    if (val === null || val === undefined) return true
     const date = new Date(val)
     return !isNaN(date.getTime())
-  }, 'Invalid date format').optional(),
-  contactId: z.string().optional(),
-  campaignId: z.string().optional(),
+  }, 'Invalid date format'),
+  contactId: z.string().nullable().optional(),
+  campaignId: z.string().nullable().optional(),
 })
 
 export async function GET(request: NextRequest) {
@@ -92,7 +93,11 @@ export async function POST(request: NextRequest) {
     try {
       validatedData = createActivitySchema.parse(body)
     } catch (error) {
-      return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
+      console.error('Activity validation error:', error)
+      return NextResponse.json({ 
+        error: 'Validation failed', 
+        details: error instanceof Error ? error.message : 'Unknown validation error'
+      }, { status: 400 })
     }
 
     // Create service instance and create activity

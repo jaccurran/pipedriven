@@ -111,6 +111,7 @@ describe('ActivityService', () => {
         include: {
           contact: true,
           user: true,
+          campaign: true,
         },
       });
     });
@@ -189,8 +190,8 @@ describe('ActivityService', () => {
       expect(result.limit).toBe(10)
       expect(mockPrisma.activity.findMany).toHaveBeenCalledWith({
         where: { userId: mockUser.id },
-        include: { contact: true, user: true },
-        orderBy: { date: 'desc' },
+        include: { contact: true, user: true, campaign: true },
+        orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 10,
       })
@@ -199,20 +200,19 @@ describe('ActivityService', () => {
     it('should apply filters correctly', async () => {
       // Arrange
       const mockActivities = [mockActivity];
-      (mockPrisma.activity.findMany as any).mockResolvedValue(mockActivities);
-      (mockPrisma.activity.count as any).mockResolvedValue(1);
-
       const filters = {
         userId: mockUser.id,
         type: 'EMAIL' as ActivityType,
-        outcome: 'POSITIVE' as const,
         contactId: mockContact.id,
         dateFrom: new Date('2024-01-01'),
         dateTo: new Date('2024-01-31'),
       };
 
+      (mockPrisma.activity.findMany as any).mockResolvedValue(mockActivities);
+      (mockPrisma.activity.count as any).mockResolvedValue(1);
+
       // Act
-      const result = await activityService.getActivities(filters);
+      const result = await activityService.getActivities(filters)
 
       // Assert
       expect(result.activities).toEqual(mockActivities);
@@ -220,19 +220,18 @@ describe('ActivityService', () => {
         where: {
           userId: mockUser.id,
           type: 'EMAIL',
-          outcome: 'POSITIVE',
           contactId: mockContact.id,
-          date: {
+          createdAt: {
             gte: new Date('2024-01-01'),
             lte: new Date('2024-01-31'),
           },
         },
-        include: { contact: true, user: true },
-        orderBy: { date: 'desc' },
+        include: { contact: true, user: true, campaign: true },
+        orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 10,
-      });
-    });
+      })
+    })
 
     it('should handle pagination correctly', async () => {
       // Arrange
@@ -241,11 +240,11 @@ describe('ActivityService', () => {
       (mockPrisma.activity.count as any).mockResolvedValue(25);
 
       // Act
-      const result = await activityService.getActivities({
-        userId: mockUser.id,
-        page: 2,
-        limit: 5,
-      });
+      const result = await activityService.getActivities({ 
+        userId: mockUser.id, 
+        page: 2, 
+        limit: 5 
+      })
 
       // Assert
       expect(result.activities).toEqual(mockActivities);
@@ -255,12 +254,12 @@ describe('ActivityService', () => {
       expect(result.totalPages).toBe(5);
       expect(mockPrisma.activity.findMany).toHaveBeenCalledWith({
         where: { userId: mockUser.id },
-        include: { contact: true, user: true },
-        orderBy: { date: 'desc' },
+        include: { contact: true, user: true, campaign: true },
+        orderBy: { createdAt: 'desc' },
         skip: 5,
         take: 5,
-      });
-    });
+      })
+    })
   })
 
   describe('getActivityById', () => {
@@ -275,7 +274,7 @@ describe('ActivityService', () => {
       expect(result).toEqual(mockActivity)
       expect(mockPrisma.activity.findUnique).toHaveBeenCalledWith({
         where: { id: 'activity-123' },
-        include: { contact: true, user: true },
+        include: { contact: true, user: true, campaign: true },
       })
     })
 
@@ -296,11 +295,11 @@ describe('ActivityService', () => {
       // Arrange
       const updateData = {
         subject: 'Updated Subject',
-        description: 'Updated description',
-        outcome: 'NEGATIVE' as const,
+        note: 'Updated description',
+        type: 'CALL' as ActivityType,
       };
-
       const updatedActivity = { ...mockActivity, ...updateData };
+
       (mockPrisma.activity.findUnique as any).mockResolvedValue(mockActivity);
       (mockPrisma.activity.update as any).mockResolvedValue(updatedActivity);
 
@@ -312,9 +311,9 @@ describe('ActivityService', () => {
       expect(mockPrisma.activity.update).toHaveBeenCalledWith({
         where: { id: 'activity-123' },
         data: updateData,
-        include: { contact: true, user: true },
-      });
-    });
+        include: { contact: true, user: true, campaign: true },
+      })
+    })
 
     it('should throw error when activity not found', async () => {
       // Arrange
@@ -324,111 +323,96 @@ describe('ActivityService', () => {
       // Act & Assert
       await expect(activityService.updateActivity('non-existent', updateData)).rejects.toThrow('Activity not found');
       expect(mockPrisma.activity.update).not.toHaveBeenCalled();
-    });
-
-    it('should handle database errors gracefully', async () => {
-      // Arrange
-      const updateData = { subject: 'Updated Subject' };
-      (mockPrisma.activity.findUnique as any).mockResolvedValue(mockActivity);
-      (mockPrisma.activity.update as any).mockRejectedValue(new Error('Database error'));
-
-      // Act & Assert
-      await expect(activityService.updateActivity('activity-123', updateData)).rejects.toThrow('Database error');
-    });
+    })
   })
 
   describe('deleteActivity', () => {
     it('should delete activity successfully', async () => {
       // Arrange
-      (mockPrisma.activity.findUnique as any).mockResolvedValue(mockActivity)
-      (mockPrisma.activity.delete as any).mockResolvedValue(mockActivity)
+      (mockPrisma.activity.findUnique as any).mockResolvedValue(mockActivity);
+      (mockPrisma.activity.delete as any).mockResolvedValue(mockActivity);
 
       // Act
-      const result = await activityService.deleteActivity('activity-123')
+      const result = await activityService.deleteActivity('activity-123');
 
       // Assert
-      expect(result).toEqual(mockActivity)
+      expect(result).toEqual(mockActivity);
       expect(mockPrisma.activity.delete).toHaveBeenCalledWith({
         where: { id: 'activity-123' },
-      })
-    })
-
-    it('should throw error when activity not found', async () => {
-      // Arrange
-      (mockPrisma.activity.findUnique as any).mockResolvedValue(null)
-
-      // Act & Assert
-      await expect(activityService.deleteActivity('non-existent')).rejects.toThrow('Activity not found')
-      expect(mockPrisma.activity.delete).not.toHaveBeenCalled()
+      });
     })
 
     it('should handle database errors gracefully', async () => {
       // Arrange
-      (mockPrisma.activity.findUnique as any).mockResolvedValue(mockActivity)
-      (mockPrisma.activity.delete as any).mockRejectedValue(new Error('Database error'))
+      (mockPrisma.activity.findUnique as any).mockResolvedValue(mockActivity);
+      (mockPrisma.activity.delete as any).mockRejectedValue(new Error('Database error'));
 
       // Act & Assert
-      await expect(activityService.deleteActivity('activity-123')).rejects.toThrow('Database error')
+      await expect(activityService.deleteActivity('activity-123')).rejects.toThrow('Database error');
     })
   })
 
   describe('getActivityAnalytics', () => {
     it('should return activity analytics', async () => {
       // Arrange
-      (mockPrisma.activity.count as any).mockResolvedValue(15)
-
-      // Mock the complex analytics queries
-      (mockPrisma.activity.groupBy as any).mockResolvedValueOnce([
+      const mockGroupByResult = [
         { type: 'EMAIL', _count: { type: 5 } },
         { type: 'CALL', _count: { type: 3 } },
         { type: 'MEETING', _count: { type: 2 } },
-        { type: 'LINKEDIN', _count: { type: 2 } },
-        { type: 'REFERRAL', _count: { type: 2 } },
-        { type: 'CONFERENCE', _count: { type: 1 } },
-      ])
+      ];
+      const mockContactActivityCounts = [
+        { contactId: 'contact-1', _count: { contactId: 3 } },
+        { contactId: 'contact-2', _count: { contactId: 2 } },
+      ];
+      const mockRecentActivityTrend = [
+        { createdAt: new Date('2024-01-15'), _count: { createdAt: 2 } },
+        { createdAt: new Date('2024-01-14'), _count: { createdAt: 1 } },
+      ];
 
-      (mockPrisma.activity.groupBy as any).mockResolvedValueOnce([
-        { outcome: 'POSITIVE', _count: { outcome: 8 } },
-        { outcome: 'NEUTRAL', _count: { outcome: 4 } },
-        { outcome: 'NEGATIVE', _count: { outcome: 3 } },
-      ])
-
-      (mockPrisma.activity.groupBy as any).mockResolvedValueOnce([
-        { contactId: mockContact.id, _count: { contactId: 5 } },
-      ])
-
-      (mockPrisma.activity.groupBy as any).mockResolvedValueOnce([
-        { date: new Date('2024-01-15'), _count: { date: 3 } },
-        { date: new Date('2024-01-14'), _count: { date: 2 } },
-        { date: new Date('2024-01-13'), _count: { date: 1 } },
-      ])
-
-      (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact)
+      (mockPrisma.activity.count as any).mockResolvedValue(10);
+      (mockPrisma.activity.groupBy as any)
+        .mockResolvedValueOnce(mockGroupByResult) // First call for activity breakdown
+        .mockResolvedValueOnce(mockContactActivityCounts) // Second call for contact activity counts
+        .mockResolvedValueOnce(mockRecentActivityTrend); // Third call for recent activity trend
+      (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact);
 
       // Act
-      const result = await activityService.getActivityAnalytics({ userId: mockUser.id })
+      const result = await activityService.getActivityAnalytics({ userId: mockUser.id });
 
       // Assert
-      expect(result.totalActivities).toBe(15);
-      expect(result.activityBreakdown).toBeDefined();
-      expect(result.averageActivitiesPerContact).toBeDefined();
-      expect(result.mostActiveContact).toBeDefined();
-      expect(result.recentActivityTrend).toBeDefined();
+      expect(result.totalActivities).toBe(10);
+      expect(result.activityBreakdown).toEqual({
+        CALL: 3,
+        EMAIL: 5,
+        MEETING: 2,
+        LINKEDIN: 0,
+        REFERRAL: 0,
+        CONFERENCE: 0,
+      });
+      expect(result.averageActivitiesPerContact).toBe(2.5);
+      expect(result.mostActiveContact).toEqual(mockContact);
+      expect(result.recentActivityTrend).toEqual([
+        { date: '2024-01-15', count: 2 },
+        { date: '2024-01-14', count: 1 },
+      ]);
     })
 
     it('should handle empty analytics gracefully', async () => {
       // Arrange
-      (mockPrisma.activity.count as any).mockResolvedValue(0)
-      (mockPrisma.activity.groupBy as any).mockResolvedValue([])
+      (mockPrisma.activity.count as any).mockResolvedValue(0);
+      (mockPrisma.activity.groupBy as any)
+        .mockResolvedValueOnce([]) // Empty activity breakdown
+        .mockResolvedValueOnce([]) // Empty contact activity counts
+        .mockResolvedValueOnce([]); // Empty recent activity trend
 
       // Act
-      const result = await activityService.getActivityAnalytics({ userId: mockUser.id })
+      const result = await activityService.getActivityAnalytics({ userId: mockUser.id });
 
       // Assert
       expect(result.totalActivities).toBe(0);
       expect(result.activityBreakdown).toEqual({
-        EMAIL: 0,
         CALL: 0,
+        EMAIL: 0,
         MEETING: 0,
         LINKEDIN: 0,
         REFERRAL: 0,

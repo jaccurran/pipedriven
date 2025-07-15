@@ -48,7 +48,8 @@ export function CampaignList({ campaigns, user, onEdit, onDelete }: CampaignList
     }).format(amount)
   }
 
-  const formatDate = (date: Date) => {
+  const formatDate = (date: Date | null) => {
+    if (!date) return 'Not set'
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'short',
@@ -142,11 +143,6 @@ export function CampaignList({ campaigns, user, onEdit, onDelete }: CampaignList
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Target Leads:</span>
                   <span className="font-medium">{campaign.targetLeads}</span>
-                </div>
-                
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Budget:</span>
-                  <span className="font-medium">{formatCurrency(campaign.budget)}</span>
                 </div>
                 
                 <div className="flex justify-between text-sm">

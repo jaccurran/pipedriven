@@ -144,7 +144,7 @@ export function MobileNavigation({
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={() => handleItemClick(item)}
+                  onClick={e => { e.preventDefault(); handleItemClick(item); }}
                   className={cn(
                     'flex items-center px-3 py-3 rounded-md text-base font-medium transition-colors',
                     'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
@@ -219,7 +219,7 @@ export function MobileNavigation({
           <Link
             key={item.href}
             href={item.href}
-            onClick={() => handleItemClick(item)}
+            onClick={e => { e.preventDefault(); handleItemClick(item); }}
             className={cn(
               'flex flex-col items-center justify-center flex-1 h-full',
               'min-h-[44px]', // Touch target minimum

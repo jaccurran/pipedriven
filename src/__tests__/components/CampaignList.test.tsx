@@ -91,10 +91,6 @@ describe('CampaignList', () => {
     // Check for target leads (should be 2 instances - one for each campaign)
     const targetLeadsElements = screen.getAllByText('100')
     expect(targetLeadsElements[0]).toBeInTheDocument()
-    
-    // Check for budget formatting
-    expect(screen.getByText('$5,000.00')).toBeInTheDocument()
-    expect(screen.getByText('$3,000.00')).toBeInTheDocument()
   })
 
   it('filters campaigns by status', async () => {

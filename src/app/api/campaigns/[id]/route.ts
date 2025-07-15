@@ -1,35 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { CampaignService } from '@/server/services/campaignService'
 import { getServerSession } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const campaignService = new CampaignService()
-    const campaign = await campaignService.getCampaignById(params.id)
-    
-    if (!campaign) {
-      return NextResponse.json(
-        { error: 'Campaign not found' },
-        { status: 404 }
-      )
+    // Check authentication
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
+    const { id: campaignId } = await params
+
+    // Get campaign with contacts
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        contacts: true,
+        users: true,
+      },
+    })
+
+    if (!campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    // Check if user has access to this campaign
+    const hasAccess = campaign.users.some(user => user.id === session.user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     return NextResponse.json(campaign)
   } catch (error) {
-    console.error('Error fetching campaign:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch campaign' },
-      { status: 500 }
-    )
+    console.error('Error in GET /api/campaigns/[id]:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     let body
@@ -92,8 +106,9 @@ export async function PUT(
     }
 
     try {
+      const { id } = await params
       const campaignService = new CampaignService()
-      const campaign = await campaignService.updateCampaign(params.id, updateData)
+      const campaign = await campaignService.updateCampaign(id, updateData)
       return NextResponse.json(campaign)
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
@@ -115,12 +130,13 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     try {
+      const { id } = await params
       const campaignService = new CampaignService()
-      await campaignService.deleteCampaign(params.id)
+      await campaignService.deleteCampaign(id)
       return NextResponse.json({ message: 'Campaign deleted successfully' })
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {

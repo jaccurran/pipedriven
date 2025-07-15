@@ -6,7 +6,7 @@ export interface CreateCampaignData {
   description?: string
   sector?: string
   theme?: string
-  status?: string
+  status?: 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED'
   startDate?: Date
   endDate?: Date
   targetLeads?: number

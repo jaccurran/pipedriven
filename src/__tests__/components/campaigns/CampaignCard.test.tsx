@@ -1,9 +1,51 @@
 import React from 'react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CampaignCard } from '@/components/campaigns/CampaignCard'
 import { Campaign, User } from '@prisma/client'
+
+// Mock the action components
+vi.mock('@/components/actions/QuickActionButton', () => ({
+  QuickActionButton: ({ type, onClick, contactName, className }: any) => (
+    <button
+      onClick={() => onClick(type)}
+      aria-label={`Log ${type.toLowerCase()} for ${contactName}`}
+      className={className}
+      data-testid={`quick-action-${type.toLowerCase()}`}
+    >
+      {type}
+    </button>
+  ),
+}))
+
+vi.mock('@/components/actions/ActionMenu', () => ({
+  ActionMenu: ({ onAction, contactName }: any) => (
+    <div data-testid="action-menu">
+      <button
+        onClick={() => onAction('LINKEDIN')}
+        data-testid="linkedin-action"
+        aria-label="LinkedIn action"
+      >
+        LinkedIn
+      </button>
+      <button
+        onClick={() => onAction('PHONE_CALL')}
+        data-testid="phone-call-action"
+        aria-label="Phone call action"
+      >
+        Phone Call
+      </button>
+      <button
+        onClick={() => onAction('CONFERENCE')}
+        data-testid="conference-action"
+        aria-label="Conference action"
+      >
+        Conference
+      </button>
+    </div>
+  ),
+}))
 
 // Mock data
 const mockUser: User = {
@@ -39,9 +81,14 @@ describe('CampaignCard', () => {
   const mockOnDelete = vi.fn()
   const mockOnDragStart = vi.fn()
   const mockOnDragEnd = vi.fn()
+  const mockOnActivity = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   describe('Rendering', () => {
@@ -57,10 +104,9 @@ describe('CampaignCard', () => {
         />
       )
 
-      expect(screen.getByText('Q1 Lead Generation')).toBeInTheDocument()
+      expect(screen.getByTestId('campaign-card')).toBeInTheDocument()
       expect(screen.getByText('Generate leads for Q1 sales')).toBeInTheDocument()
       expect(screen.getByText('100')).toBeInTheDocument()
-      expect(screen.getByText('$5,000')).toBeInTheDocument()
       expect(screen.getByText('Jan 1 - Mar 31')).toBeInTheDocument()
     })
 
@@ -99,6 +145,104 @@ describe('CampaignCard', () => {
 
       const card = screen.getByTestId('campaign-card')
       expect(card).toHaveClass('opacity-50', 'scale-95', 'shadow-lg')
+    })
+  })
+
+  describe('Action System Integration', () => {
+    it('shows action system when onActivity is provided', () => {
+      render(
+        <CampaignCard
+          campaign={mockCampaign}
+          onEdit={mockOnEdit}
+          onDelete={mockOnDelete}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+          onActivity={mockOnActivity}
+          isDragging={false}
+        />
+      )
+
+      // Check for primary action buttons
+      expect(screen.getByTestId('quick-action-email')).toBeInTheDocument()
+      expect(screen.getByTestId('quick-action-meeting_request')).toBeInTheDocument()
+      expect(screen.getByTestId('quick-action-meeting')).toBeInTheDocument()
+
+      // Check for secondary action menu
+      expect(screen.getByTestId('action-menu')).toBeInTheDocument()
+    })
+
+    it('calls onActivity with correct parameters when primary actions are clicked', async () => {
+      const user = userEvent.setup()
+      
+      render(
+        <CampaignCard
+          campaign={mockCampaign}
+          onEdit={mockOnEdit}
+          onDelete={mockOnDelete}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+          onActivity={mockOnActivity}
+          isDragging={false}
+        />
+      )
+
+      // Test Email action
+      await user.click(screen.getByTestId('quick-action-email'))
+      expect(mockOnActivity).toHaveBeenCalledWith('campaign-1', 'EMAIL')
+
+      // Test Meeting Request action
+      await user.click(screen.getByTestId('quick-action-meeting_request'))
+      expect(mockOnActivity).toHaveBeenCalledWith('campaign-1', 'MEETING_REQUEST')
+
+      // Test Meeting action
+      await user.click(screen.getByTestId('quick-action-meeting'))
+      expect(mockOnActivity).toHaveBeenCalledWith('campaign-1', 'MEETING')
+    })
+
+    it('calls onActivity with correct parameters when secondary actions are clicked', async () => {
+      const user = userEvent.setup()
+      
+      render(
+        <CampaignCard
+          campaign={mockCampaign}
+          onEdit={mockOnEdit}
+          onDelete={mockOnDelete}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+          onActivity={mockOnActivity}
+          isDragging={false}
+        />
+      )
+
+      // Test LinkedIn action
+      await user.click(screen.getByTestId('linkedin-action'))
+      expect(mockOnActivity).toHaveBeenCalledWith('campaign-1', 'LINKEDIN')
+
+      // Test Phone Call action
+      await user.click(screen.getByTestId('phone-call-action'))
+      expect(mockOnActivity).toHaveBeenCalledWith('campaign-1', 'PHONE_CALL')
+
+      // Test Conference action
+      await user.click(screen.getByTestId('conference-action'))
+      expect(mockOnActivity).toHaveBeenCalledWith('campaign-1', 'CONFERENCE')
+    })
+
+    it('does not show action system when onActivity is not provided', () => {
+      render(
+        <CampaignCard
+          campaign={mockCampaign}
+          onEdit={mockOnEdit}
+          onDelete={mockOnDelete}
+          onDragStart={mockOnDragStart}
+          onDragEnd={mockOnDragEnd}
+          isDragging={false}
+        />
+      )
+
+      expect(screen.queryByTestId('quick-action-email')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('quick-action-meeting_request')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('quick-action-meeting')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('action-menu')).not.toBeInTheDocument()
     })
   })
 
@@ -255,29 +399,27 @@ describe('CampaignCard', () => {
       const card = screen.getByTestId('campaign-card')
       expect(card).toHaveClass('focus:outline-none', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-offset-2')
     })
-  })
 
-  describe('Data Formatting', () => {
-    it('formats currency correctly', () => {
-      const campaignWithLargeBudget = {
-        ...mockCampaign,
-        budget: 15000,
-      }
-
+    it('has proper ARIA labels for action system', () => {
       render(
         <CampaignCard
-          campaign={campaignWithLargeBudget}
+          campaign={mockCampaign}
           onEdit={mockOnEdit}
           onDelete={mockOnDelete}
           onDragStart={mockOnDragStart}
           onDragEnd={mockOnDragEnd}
+          onActivity={mockOnActivity}
           isDragging={false}
         />
       )
 
-      expect(screen.getByText('$15,000')).toBeInTheDocument()
+      expect(screen.getByLabelText('Log email for Q1 Lead Generation')).toBeInTheDocument()
+      expect(screen.getByLabelText('Log meeting_request for Q1 Lead Generation')).toBeInTheDocument()
+      expect(screen.getByLabelText('Log meeting for Q1 Lead Generation')).toBeInTheDocument()
     })
+  })
 
+  describe('Data Formatting', () => {
     it('formats dates correctly', () => {
       const campaignWithDifferentDates = {
         ...mockCampaign,

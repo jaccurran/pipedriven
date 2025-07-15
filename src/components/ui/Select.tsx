@@ -13,7 +13,7 @@ export interface SelectProps {
   label?: string
   placeholder?: string
   options: SelectOption[]
-  value: string
+  value: string | undefined
   onChange: (value: string) => void
   error?: string
   required?: boolean
@@ -51,7 +51,7 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
     const selectRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
 
-    const selectId = id || name || `select-${Math.random().toString(36).substr(2, 9)}`
+    const selectId = id || name || `select-${React.useId()}`
     const errorId = `${selectId}-error`
 
     // Filter options based on search term
@@ -170,6 +170,18 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
           </label>
         )}
         <div className="mt-2">
+          {/* Visually hidden input for accessibility and label association */}
+          <input
+            type="text"
+            id={selectId}
+            name={name}
+            value={selectedOption?.label || ''}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            data-testid={selectId}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+          />
           <div
             ref={selectRef}
             className={containerClasses}
@@ -179,6 +191,13 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             aria-haspopup="listbox"
             aria-describedby={error ? errorId : undefined}
             aria-invalid={error ? 'true' : 'false'}
+            aria-controls={`${selectId}-listbox`}
+            aria-owns={`${selectId}-listbox`}
+            aria-activedescendant={
+              isOpen && focusedIndex >= 0 && filteredOptions[focusedIndex]
+                ? `${selectId}-option-${filteredOptions[focusedIndex].value}`
+                : undefined
+            }
             {...props}
           >
             <button
@@ -211,7 +230,11 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             </button>
 
             {isOpen && (
-              <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+              <div
+                id={`${selectId}-listbox`}
+                role="listbox"
+                className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+              >
                 {searchable && (
                   <div className="px-3 py-2">
                     <input
@@ -238,10 +261,11 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                   filteredOptions.map((option, index) => (
                     <div
                       key={option.value}
+                      id={`${selectId}-option-${option.value}`}
                       className={cn(
                         'relative cursor-pointer select-none px-3 py-2',
                         index === focusedIndex && 'bg-blue-600 text-white',
-                        !index === focusedIndex && 'text-gray-900',
+                        index !== focusedIndex && 'text-gray-900',
                         option.disabled && 'cursor-not-allowed opacity-50',
                         !option.disabled && 'hover:bg-blue-600 hover:text-white'
                       )}

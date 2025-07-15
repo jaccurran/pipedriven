@@ -259,7 +259,7 @@ describe('CampaignService', () => {
         ...mockCampaign,
         contacts: [],
         activities: [],
-        user: mockUser,
+        users: [],
       };
       (mockPrisma.campaign.findUnique as any).mockResolvedValue(campaignWithRelations);
 
@@ -271,9 +271,9 @@ describe('CampaignService', () => {
       expect(mockPrisma.campaign.findUnique).toHaveBeenCalledWith({
         where: { id: mockCampaign.id },
         include: {
+          users: true,
           contacts: true,
           activities: true,
-          user: true,
         },
       });
     });
@@ -423,14 +423,15 @@ describe('CampaignService', () => {
         { id: 'activity-3', type: 'MEETING', createdAt: new Date('2024-01-01') },
       ];
       (mockPrisma.activity.findMany as any).mockResolvedValue(activities);
-      (mockPrisma.activity.count as any).mockResolvedValue(3);
       (mockPrisma.contact.count as any).mockResolvedValue(25);
+      (mockPrisma.activity.count as any).mockResolvedValue(3);
 
       // Act
       const result = await campaignService.getCampaignAnalytics('campaign-123');
 
       // Assert
       expect(result).toEqual({
+        totalContacts: 25,
         totalActivities: 3,
         activityBreakdown: {
           EMAIL: 1,
@@ -440,27 +441,45 @@ describe('CampaignService', () => {
           REFERRAL: 0,
           CONFERENCE: 0,
         },
-        contactsCount: 25,
-        averageWarmnessScore: 5,
+        meetingsRequested: 1,
+        meetingsBooked: 1,
       });
 
       expect(mockPrisma.activity.findMany).toHaveBeenCalledWith({
         where: { campaignId: 'campaign-123' },
-        orderBy: { createdAt: 'desc' },
+      });
+      expect(mockPrisma.contact.count).toHaveBeenCalledWith({
+        where: { campaigns: { some: { id: 'campaign-123' } } },
+      });
+      expect(mockPrisma.activity.count).toHaveBeenCalledWith({
+        where: { campaignId: 'campaign-123' },
       });
     });
 
     it('should handle campaign with no activities', async () => {
       // Arrange
-      const contacts = [{ id: 'contact-1', name: 'Contact 1' }];
-      (mockPrisma.contact.findMany as any).mockResolvedValue(contacts);
+      (mockPrisma.activity.findMany as any).mockResolvedValue([]);
+      (mockPrisma.contact.count as any).mockResolvedValue(0);
       (mockPrisma.activity.count as any).mockResolvedValue(0);
 
       // Act
       const result = await campaignService.getCampaignAnalytics('campaign-123');
 
       // Assert
-      expect(result.totalActivities).toBe(0);
+      expect(result).toEqual({
+        totalContacts: 0,
+        totalActivities: 0,
+        activityBreakdown: {
+          EMAIL: 0,
+          CALL: 0,
+          MEETING: 0,
+          LINKEDIN: 0,
+          REFERRAL: 0,
+          CONFERENCE: 0,
+        },
+        meetingsRequested: 0,
+        meetingsBooked: 0,
+      });
     });
   })
 

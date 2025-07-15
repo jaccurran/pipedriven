@@ -380,3 +380,36 @@ describe("Feature Name", () => {
 ---
 
 *This strategy is based on our testing journey and lessons learned. It should be updated as we discover new patterns and best practices.*
+
+## Lessons Learned: Date Validation and TDD
+
+### 1. Date Validation: Always Normalize to Midnight
+**Pattern:** When comparing dates for validation (e.g., "not in the future"), always set both dates to midnight (00:00:00) before comparison. This avoids false positives due to time-of-day or timezone differences.
+
+```ts
+const selectedDate = new Date(dateString)
+const today = new Date()
+selectedDate.setHours(0, 0, 0, 0)
+today.setHours(0, 0, 0, 0)
+if (selectedDate > today) {
+  // Handle future date error
+}
+```
+**Use this pattern:** Whenever you need to compare only the date part (not the time) in validation logic.
+
+### 2. Test Environment Date Consistency
+**Pattern:** When writing tests that depend on the current date, always control the date explicitly:
+- Pass the date as a prop (e.g., `initialDate`)
+- Or mock the system date/time using a library
+
+**Use this pattern:** In all tests where "today" or "now" is relevant to the logic being tested.
+
+### 3. TDD: Keep Test and Component Interfaces in Sync
+**Pattern:** If you refactor a component's props or API, update the tests immediately. Use TDD to catch mismatches early.
+
+**Use this pattern:** Whenever you change a component's interface, especially in a TDD workflow.
+
+### 4. Debug Logging for Test Failures
+**Pattern:** Add targeted `console.log` statements in test mode to trace validation and submission logic. Remove or guard these logs for production.
+
+**Use this pattern:** When a test fails for unclear reasons, especially in validation or form submission flows.

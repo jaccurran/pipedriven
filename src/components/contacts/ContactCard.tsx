@@ -1,17 +1,21 @@
 'use client'
 
-import React from 'react'
-import { Contact } from '@prisma/client'
+import React, { useState } from 'react'
+import { Contact, Organization } from '@prisma/client'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
 import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 
+interface ContactWithOrganization extends Contact {
+  organization?: Organization | null
+}
+
 interface ContactCardProps {
-  contact: Contact
-  onEdit?: (contact: Contact) => void
-  onDelete?: (contact: Contact) => void
+  contact: ContactWithOrganization
+  onEdit?: (contact: ContactWithOrganization) => void
+  onDelete?: (contact: ContactWithOrganization) => void
   onActivity?: (contactId: string, activityType: string) => void
   className?: string
 }
@@ -23,12 +27,15 @@ export function ContactCard({
   onActivity,
   className = '',
 }: ContactCardProps) {
-  const formatDate = (date: Date) => {
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return 'Never'
+    const d = new Date(date)
+    if (isNaN(d.getTime())) return 'Never'
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-    }).format(date)
+    }).format(d)
   }
 
   // Get activity status color based on warmness score and last contacted date
@@ -91,6 +98,16 @@ export function ContactCard({
     return 'Cold'
   }
 
+  // Check if recently contacted (within 24 hours)
+  const isRecentlyContacted = () => {
+    if (!contact.lastContacted) return false
+    const now = new Date()
+    const lastContacted = new Date(contact.lastContacted)
+    const diffTime = now.getTime() - lastContacted.getTime()
+    const diffHours = diffTime / (1000 * 60 * 60)
+    return diffHours <= 24
+  }
+
   const handlePrimaryAction = (type: ActionType) => {
     if (onActivity) {
       // Map ActionType to activity type
@@ -115,91 +132,131 @@ export function ContactCard({
     }
   }
 
+  const [isUpdatingWarmness, setIsUpdatingWarmness] = useState(false)
+
+  const handleWarmnessChange = async (newScore: number) => {
+    if (newScore < 0 || newScore > 10) return
+    
+    setIsUpdatingWarmness(true)
+    try {
+      const response = await fetch(`/api/contacts/${contact.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ warmnessScore: newScore }),
+      })
+
+      if (response.ok) {
+        // Trigger a page refresh to show updated data
+        window.location.reload()
+      } else {
+        console.error('Failed to update warmness score')
+      }
+    } catch (error) {
+      console.error('Error updating warmness score:', error)
+    } finally {
+      setIsUpdatingWarmness(false)
+    }
+  }
+
   return (
     <Card
       className={cn(
         'p-4 hover:shadow-md transition-all duration-200',
         'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+        'sm:p-5', // Larger padding on desktop
         className
       )}
       data-testid="contact-card"
     >
-      <div className="space-y-3">
-        {/* Header */}
+      <div className="space-y-4">
+        {/* Header - Mobile optimized */}
         <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-2 mb-1">
-              <h3 className="text-sm font-medium text-gray-900 truncate">
+          <div className="flex-1 min-w-0 pr-2">
+            <div className="flex items-center space-x-2 mb-2">
+              <h3 
+                className="text-base font-medium text-gray-900 truncate sm:text-lg" 
+                data-testid="contact-name"
+              >
                 {contact.name}
               </h3>
               
               {/* Pipedrive Status */}
-              <Badge
-                variant="outline"
-                size="sm"
-                className={cn(
-                  'text-xs',
-                  getPipedriveStatusColor()
-                )}
-                data-testid="pipedrive-status"
-              >
-                {contact.pipedrivePersonId ? 'Pipedrive' : 'Local'}
-              </Badge>
+              {contact.pipedrivePersonId && (
+                <Badge
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    'text-xs sm:text-sm',
+                    getPipedriveStatusColor()
+                  )}
+                  data-testid="pipedrive-status"
+                >
+                  P
+                </Badge>
+              )}
             </div>
             
-            <p className="text-xs text-gray-600 truncate">
-              {contact.email}
-            </p>
+            {contact.email && (
+              <p className="text-sm text-gray-600 truncate sm:text-base" data-testid="contact-email">
+                {contact.email}
+              </p>
+            )}
             
-            {contact.organisation && (
-              <p className="text-xs text-gray-600 truncate">
-                {contact.organisation}
+            {contact.organization && (
+              <p className="text-sm text-gray-600 truncate sm:text-base" data-testid="contact-organisation">
+                {contact.organization.name}
               </p>
             )}
           </div>
           
-          {/* Actions */}
-          <div className="flex items-center space-x-1 ml-2">
-            {onEdit && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEdit(contact)
-                }}
-                className="p-1 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
-                aria-label="Edit contact"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            )}
-            
-            {onDelete && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(contact)
-                }}
-                className="p-1 text-gray-400 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
-                aria-label="Delete contact"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            )}
-          </div>
+          {/* Edit/Delete Actions - Moved to more accessible location */}
+          {(onEdit || onDelete) && (
+            <div className="flex items-center space-x-1">
+              {onEdit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEdit(contact)
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg transition-colors"
+                  aria-label="Edit contact"
+                  data-testid="edit-contact-button"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+              )}
+              
+              {onDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(contact)
+                  }}
+                  className="p-2 text-gray-400 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 rounded-lg transition-colors"
+                  aria-label="Delete contact"
+                  data-testid="delete-contact-button"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Status Indicators */}
-        <div className="flex items-center space-x-2">
+        {/* Status Indicators - Responsive grid */}
+        <div className="flex flex-wrap items-center gap-2">
           {/* Activity Status */}
           <Badge
             variant="outline"
             size="sm"
             className={cn(
-              'text-xs',
+              'text-xs sm:text-sm',
               getActivityStatusColor()
             )}
             data-testid="activity-status"
@@ -211,7 +268,8 @@ export function ContactCard({
           <Badge
             variant="outline"
             size="sm"
-            className="text-xs bg-blue-50 text-blue-700 border-blue-200"
+            className="text-xs sm:text-sm bg-blue-50 text-blue-700 border-blue-200"
+            data-testid="warmness-badge"
           >
             {getWarmnessText()} ({contact.warmnessScore}/10)
           </Badge>
@@ -221,54 +279,92 @@ export function ContactCard({
             <Badge
               variant="outline"
               size="sm"
-              className="text-xs bg-purple-50 text-purple-700 border-purple-200"
+              className="text-xs sm:text-sm bg-purple-50 text-purple-700 border-purple-200"
             >
               In Campaign
             </Badge>
           )}
         </div>
 
-        {/* Activity Information */}
-        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+        {/* Activity Information - Responsive grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600 sm:text-base">
           <div>
-            <span className="font-medium">Last Contacted:</span>
-            <span className="ml-1">
+            <span className="font-medium" data-testid="last-contacted-label">Last Contacted:</span>
+            <span className="ml-1" data-testid="last-contacted-value">
               {contact.lastContacted ? formatDate(contact.lastContacted) : 'Never'}
             </span>
+            {isRecentlyContacted() && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Recent
+              </span>
+            )}
           </div>
           <div>
-            <span className="font-medium">Warmness:</span>
-            <span className="ml-1">{contact.warmnessScore}/10</span>
+            <span className="font-medium" data-testid="warmness-label">Warmness:</span>
+            <span className="ml-1" data-testid="warmness-value">{contact.warmnessScore}/10</span>
+            <div className="inline-flex items-center ml-2 space-x-1">
+              <button
+                onClick={() => handleWarmnessChange(contact.warmnessScore - 1)}
+                disabled={isUpdatingWarmness || contact.warmnessScore <= 0}
+                className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Decrease warmness score"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                </svg>
+              </button>
+              <button
+                onClick={() => handleWarmnessChange(contact.warmnessScore + 1)}
+                disabled={isUpdatingWarmness || contact.warmnessScore >= 10}
+                className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Increase warmness score"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Actions - Mobile-first layout */}
         {onActivity && (
-          <div className="flex items-center space-x-2 pt-2 border-t border-gray-100">
-            {/* Primary Actions - Always visible */}
-            <QuickActionButton
-              type="EMAIL"
-              onClick={handlePrimaryAction}
-              contactName={contact.name}
-              className="text-xs px-2 py-1"
-            />
-            <QuickActionButton
-              type="MEETING_REQUEST"
-              onClick={handlePrimaryAction}
-              contactName={contact.name}
-              className="text-xs px-2 py-1"
-            />
-            <QuickActionButton
-              type="MEETING"
-              onClick={handlePrimaryAction}
-              contactName={contact.name}
-              className="text-xs px-2 py-1"
-            />
-            {/* Secondary Actions - In ellipsis menu */}
-            <ActionMenu
-              onAction={handleSecondaryAction}
-              contactName={contact.name}
-            />
+          <div className="pt-3 border-t border-gray-100">
+            {/* Primary Actions - Responsive layout */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <QuickActionButton
+                type="EMAIL"
+                onClick={handlePrimaryAction}
+                contactName={contact.name}
+                className="flex-1 sm:flex-none text-sm px-3 py-2 min-h-[44px]"
+                data-testid="email-action-button"
+              />
+              <QuickActionButton
+                type="MEETING_REQUEST"
+                onClick={handlePrimaryAction}
+                contactName={contact.name}
+                className="flex-1 sm:flex-none text-sm px-3 py-2 min-h-[44px]"
+                data-testid="meeting-request-action-button"
+              />
+              <QuickActionButton
+                type="MEETING"
+                onClick={handlePrimaryAction}
+                contactName={contact.name}
+                className="flex-1 sm:flex-none text-sm px-3 py-2 min-h-[44px]"
+                data-testid="meeting-action-button"
+              />
+            </div>
+            
+            {/* Secondary Actions - Right-aligned */}
+            <div className="flex justify-end">
+              <ActionMenu
+                onAction={handleSecondaryAction}
+                contactName={contact.name}
+              />
+            </div>
           </div>
         )}
       </div>

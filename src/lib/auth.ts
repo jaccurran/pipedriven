@@ -35,6 +35,7 @@ export const authOptions: NextAuthOptions = {
               name: true,
               password: true,
               role: true,
+              pipedriveApiKey: true,
             },
           })
 
@@ -65,7 +66,8 @@ export const authOptions: NextAuthOptions = {
             email: user.email,
             name: user.name,
             role: user.role,
-          }
+            pipedriveApiKey: user.pipedriveApiKey,
+          } as any // Type assertion to handle adapter compatibility
         } catch (error) {
           console.error('❌ Auth error:', error)
           return null
@@ -95,6 +97,38 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           email: user.email,
           name: user.name,
+          pipedriveApiKey: user.pipedriveApiKey,
+        }
+      }
+      
+      // If we have a token but no user, fetch the latest user data from database
+      if (token?.id && !user) {
+        console.log('🔐 Fetching latest user data from database')
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true,
+              pipedriveApiKey: true,
+            },
+          })
+          
+          if (dbUser) {
+            console.log('🔐 Updated token with latest user data')
+            return {
+              ...token,
+              id: dbUser.id,
+              role: dbUser.role,
+              email: dbUser.email,
+              name: dbUser.name,
+              pipedriveApiKey: dbUser.pipedriveApiKey,
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error fetching user data in JWT callback:', error)
         }
       }
       
@@ -111,9 +145,10 @@ export const authOptions: NextAuthOptions = {
       // Send properties to the client
       if (token && session.user) {
         session.user.id = token.id as string
-        session.user.role = token.role as string
+        session.user.role = token.role as UserRole
         session.user.email = token.email as string
         session.user.name = token.name as string
+        session.user.pipedriveApiKey = token.pipedriveApiKey as string
       }
       
       return session

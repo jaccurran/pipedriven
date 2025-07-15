@@ -40,7 +40,14 @@ vi.mock('next-auth/react', () => ({
 }))
 
 // Create a single Prisma client instance for testing
-const prisma = new PrismaClient()
+// Use the same DATABASE_URL that vitest configures
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+})
 
 // Only clean up database if we're explicitly running tests
 // This prevents accidental data loss during development

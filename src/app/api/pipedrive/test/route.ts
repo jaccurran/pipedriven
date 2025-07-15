@@ -31,12 +31,14 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'Pipedrive API connection successful',
         user: result.user,
+        diagnostics: result.diagnostics,
       })
     } else {
       return NextResponse.json(
         { 
           success: false,
-          error: result.error || 'Failed to connect to Pipedrive API'
+          error: result.error || 'Failed to connect to Pipedrive API',
+          diagnostics: result.diagnostics,
         },
         { status: 400 }
       )
@@ -44,7 +46,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error testing Pipedrive connection:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        success: false,
+        error: 'Internal server error',
+        diagnostics: {
+          timestamp: new Date().toISOString(),
+          errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+        }
+      },
       { status: 500 }
     )
   }

@@ -4,12 +4,13 @@ import { getServerSession } from '@/lib/auth'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     try {
+      const { id } = await params
       const campaignService = new CampaignService()
-      const analytics = await campaignService.getCampaignAnalytics(params.id)
+      const analytics = await campaignService.getCampaignAnalytics(id)
       return NextResponse.json(analytics)
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {

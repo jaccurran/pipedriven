@@ -146,12 +146,6 @@ describe('CampaignKanban', () => {
       expect(screen.getAllByText('50').length).toBeGreaterThan(0)
       expect(screen.getAllByText('75').length).toBeGreaterThan(0)
       expect(screen.getAllByText('30').length).toBeGreaterThan(0)
-
-      // Check for budget formatting
-      expect(screen.getAllByText('$5,000').length).toBeGreaterThan(0)
-      expect(screen.getAllByText('$3,000').length).toBeGreaterThan(0)
-      expect(screen.getAllByText('$2,500').length).toBeGreaterThan(0)
-      expect(screen.getAllByText('$1,500').length).toBeGreaterThan(0)
     })
 
     it('displays empty state for columns with no campaigns', () => {

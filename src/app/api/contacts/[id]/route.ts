@@ -18,7 +18,7 @@ const updateContactSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -28,8 +28,9 @@ export async function GET(
     }
 
     // Create service instance and get contact
+    const { id } = await params
     const contactService = new ContactService()
-    const contact = await contactService.getContactById(params.id)
+    const contact = await contactService.getContactById(id)
 
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
@@ -44,7 +45,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -78,8 +79,9 @@ export async function PUT(
     )
 
     // Create service instance and update contact
+    const { id } = await params
     const contactService = new ContactService()
-    const contact = await contactService.updateContact(params.id, cleanData)
+    const contact = await contactService.updateContact(id, cleanData)
 
     return NextResponse.json(contact)
   } catch (error) {
@@ -96,7 +98,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication
@@ -106,8 +108,9 @@ export async function DELETE(
     }
 
     // Create service instance and delete contact
+    const { id } = await params
     const contactService = new ContactService()
-    await contactService.deleteContact(params.id)
+    await contactService.deleteContact(id)
 
     return NextResponse.json({ message: 'Contact deleted successfully' })
   } catch (error) {
