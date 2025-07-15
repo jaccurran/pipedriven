@@ -44,3 +44,6 @@ next-env.d.ts
 
 # temp setup directory
 /temp-setup
+
+# seed file (contains sensitive API keys)
+prisma/seed.ts
