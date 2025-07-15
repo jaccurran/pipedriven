@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
+    "db:seed:remote": "tsx scripts/seed-remote.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
