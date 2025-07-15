@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { Prisma } from '@prisma/client'
 import { MY500_CONSTANTS, ValidationError, PRIORITY_SORT_CONFIG } from '@/types/my500'
 
 // Zod schemas for validation
@@ -39,7 +40,7 @@ export function validateMy500Query(params: Record<string, any>): {
 
 // Helper functions for building database queries
 export function buildWhereClause(userId: string, search?: string, filter?: string) {
-  const where: any = { userId }
+  const where: Prisma.ContactWhereInput = { userId }
 
   if (search) {
     where.OR = [

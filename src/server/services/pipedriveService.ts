@@ -35,6 +35,23 @@ interface PipedriveActivity {
   updated: string
 }
 
+interface PipedriveUser {
+  id: number
+  name: string
+  email: string
+  created: string
+  updated: string
+}
+
+interface PipedriveDiagnostics {
+  responseTime?: string
+  timestamp?: string
+  apiVersion?: string
+  endpoint?: string
+  errorType?: string
+  [key: string]: unknown
+}
+
 interface PipedriveApiResponse<T> {
   success: boolean
   data: T
@@ -63,7 +80,7 @@ export class PipedriveService {
   /**
    * Test the Pipedrive API connection
    */
-  async testConnection(): Promise<{ success: boolean; user?: any; error?: string; diagnostics?: any }> {
+  async testConnection(): Promise<{ success: boolean; user?: PipedriveUser; error?: string; diagnostics?: PipedriveDiagnostics }> {
     const startTime = Date.now()
     
     const result = await this.makeApiRequest('/users/me', {}, {
@@ -339,11 +356,11 @@ export class PipedriveService {
       
       // Transform the search results to match our PipedriveOrganization interface
       const transformedOrganizations = organizations.map((item: any) => ({
-        id: item.item.id,
-        name: item.item.name,
-        address: item.item.address,
-        created: item.item.created,
-        updated: item.item.updated,
+        id: item.item?.id || item.id,
+        name: item.item?.name || item.name,
+        address: item.item?.address || item.address,
+        created: item.item?.created || item.created,
+        updated: item.item?.updated || item.updated,
       }))
 
       return {
@@ -379,7 +396,7 @@ export class PipedriveService {
       const persons = nameResult.data?.data?.items || []
       
       // Transform the search results to match our PipedrivePerson interface
-      return persons.map((item: any) => ({
+      return persons.map((item: PipedrivePerson) => ({
         id: item.item.id,
         name: item.item.name,
         email: item.item.email || [],
@@ -467,8 +484,8 @@ export class PipedriveService {
   private async makeApiRequest(
     endpoint: string,
     options: RequestInit = {},
-    context: Record<string, any> = {}
-  ): Promise<{ success: boolean; data?: any; error?: string; diagnostics?: any }> {
+    context: Record<string, unknown> = {}
+  ): Promise<{ success: boolean; data?: PipedriveApiResponse<unknown>; error?: string; diagnostics?: PipedriveDiagnostics }> {
     // Use query parameter authentication instead of Bearer token
     const separator = endpoint.includes('?') ? '&' : '?'
     const url = `${this.baseUrl}${endpoint}${separator}api_token=${this.apiKey}`

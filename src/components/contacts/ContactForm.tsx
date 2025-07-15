@@ -28,7 +28,7 @@ interface ContactFormProps {
   mode?: 'create' | 'edit'
 }
 
-function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
+function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number) {
   let timeout: ReturnType<typeof setTimeout>
   return (...args: Parameters<T>) => {
     clearTimeout(timeout)
@@ -52,7 +52,7 @@ export function ContactForm({
     phone: '',
     organisation: '',
     organizationId: undefined,
-    warmnessScore: 5,
+    warmnessScore: 2,
     ...initialValues
   })
 
@@ -85,7 +85,7 @@ export function ContactForm({
         let localOrgs: OrganizationResult[] = []
         if (localRes.ok) {
           const localData = await localRes.json()
-          localOrgs = (localData.data?.organizations || []).map((org: any) => ({
+          localOrgs = (localData.data?.organizations || []).map((org: { id: string; name: string }) => ({
             id: org.id,
             name: org.name,
             source: 'local' as const
@@ -100,11 +100,16 @@ export function ContactForm({
         let pdOrgs: OrganizationResult[] = []
         if (pdRes.ok) {
           const pdData = await pdRes.json()
-          pdOrgs = (pdData.results || []).map((org: any) => ({
+          pdOrgs = (pdData.results || []).map((org: { id: number; name: string }) => ({
             id: String(org.id),
             name: org.name,
             source: 'pipedrive' as const
           }))
+        } else if (pdRes.status === 429) {
+          // Rate limit - don't show error, just skip Pipedrive results
+          console.log('Pipedrive rate limit hit, skipping Pipedrive search')
+        } else {
+          console.error('Pipedrive search failed:', pdRes.status, pdRes.statusText)
         }
         // Merge, dedupe by name (prefer local)
         const seen = new Set<string>()
@@ -112,6 +117,7 @@ export function ContactForm({
         setOrgResults(merged)
         setOrgLoading(false)
       } catch (err) {
+        console.error('Organization search error:', err)
         setOrgError('Error searching organizations')
         setOrgResults([])
         setOrgLoading(false)
@@ -320,12 +326,12 @@ export function ContactForm({
               type="range"
               min="0"
               max="10"
-              value={formData.warmnessScore || 5}
+              value={formData.warmnessScore || 2}
               onChange={(e) => handleInputChange('warmnessScore', parseInt(e.target.value))}
               className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
             />
             <span className="text-sm font-medium text-gray-700 min-w-[2rem]">
-              {formData.warmnessScore || 5}
+              {formData.warmnessScore || 2}
             </span>
           </div>
           {errors.warmnessScore && (

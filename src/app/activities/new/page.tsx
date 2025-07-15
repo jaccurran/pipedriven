@@ -52,6 +52,12 @@ export default async function NewActivityPage() {
     }),
   ])
 
+  // Map contacts to ensure organisation is undefined if null
+  const safeContacts = contacts.map(contact => ({
+    ...contact,
+    organisation: contact.organisation === null ? undefined : contact.organisation,
+  }))
+
   const handleSubmit = async (activityData: any) => {
     'use server'
     
@@ -98,7 +104,7 @@ export default async function NewActivityPage() {
         {/* Activity Form */}
         <ActivityForm
           userId={user.id}
-          contacts={contacts}
+          contacts={safeContacts}
           campaigns={campaigns}
           onSubmit={handleSubmit}
           onCancel={() => redirect('/activities')}

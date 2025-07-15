@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import type { Activity, ActivityType, Contact, User } from '@prisma/client'
+import type { Activity, ActivityType, Contact, User, Prisma } from '@prisma/client'
 
 export interface CreateActivityData {
   type: ActivityType
@@ -99,7 +99,7 @@ export class ActivityService {
     const skip = (page - 1) * limit
 
     // Build where clause
-    const where: any = { userId: filters.userId }
+    const where: Prisma.ActivityWhereInput = { userId: filters.userId }
 
     if (filters.type) {
       where.type = filters.type

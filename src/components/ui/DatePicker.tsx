@@ -38,7 +38,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
     ...props
   }, ref) => {
     // Filter out props that shouldn't be passed to DOM elements
-    const { placeholderText, ...domProps } = props as any
+    const { placeholderText, ...domProps } = props as Omit<typeof props, 'placeholderText'>
 
     const [isOpen, setIsOpen] = useState(false)
     const [currentMonth, setCurrentMonth] = useState(() => {

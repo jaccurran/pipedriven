@@ -9,9 +9,9 @@ const userRateLimits = new Map<string, { count: number; resetTime: number }>();
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 5 * 60 * 1000;
-// Rate limit: 1 request per second per user
-const RATE_LIMIT_WINDOW = 1000; // 1 second
-const RATE_LIMIT_MAX = 1; // 1 request per window
+// Rate limit: 10 requests per minute per user (much more reasonable for search)
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX = 10; // 10 requests per minute
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,8 +87,14 @@ export async function POST(request: NextRequest) {
     const pipedriveService = new PipedriveService(user.pipedriveApiKey);
     let results: any[] = [];
     try {
-      results = await pipedriveService.searchOrganizations(query);
+      const searchResult = await pipedriveService.searchOrganizations(query);
+      if (searchResult.success && searchResult.organizations) {
+        results = searchResult.organizations;
+      } else {
+        console.error('Pipedrive search failed:', searchResult.error);
+      }
     } catch (error) {
+      console.error('Pipedrive search error:', error);
       // Gracefully handle Pipedrive errors
       results = [];
     }

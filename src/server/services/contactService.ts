@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import type { Contact, Activity, Campaign, ActivityType } from '@prisma/client'
+import type { Contact, Activity, Campaign, ActivityType, User, Prisma } from '@prisma/client'
 
 export interface CreateContactData {
   name: string
@@ -103,7 +103,7 @@ export class ContactService {
     
     const skip = (page - 1) * limit
 
-    const where: any = {}
+    const where: Prisma.ContactWhereInput = {}
     
     if (userId) {
       where.userId = userId
@@ -163,7 +163,7 @@ export class ContactService {
   async getContactById(id: string): Promise<Contact & {
     activities: Activity[]
     campaigns: Campaign[]
-    user: any
+    user: User
   } | null> {
     return await prisma.contact.findUnique({
       where: { id },
@@ -268,7 +268,7 @@ export class ContactService {
     
     const skip = (page - 1) * limit
 
-    const where: any = {}
+    const where: Prisma.ContactWhereInput = {}
     
     if (userId) {
       where.userId = userId

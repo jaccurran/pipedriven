@@ -9,9 +9,9 @@ const userRateLimits = new Map<string, { count: number; resetTime: number }>();
 
 // Cache TTL: 5 minutes
 const CACHE_TTL = 5 * 60 * 1000;
-// Rate limit: 1 request per second per user
-const RATE_LIMIT_WINDOW = 1000; // 1 second
-const RATE_LIMIT_MAX = 1; // 1 request per window
+// Rate limit: 10 requests per minute per user (much more reasonable for search)
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX = 10; // 10 requests per minute
 
 export async function POST(request: NextRequest) {
   try {

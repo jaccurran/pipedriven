@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type User } from '@prisma/client'
 import { verifyPassword } from '../lib/auth-utils.ts'
 
 const prisma = new PrismaClient()
@@ -57,7 +57,7 @@ async function checkUsers() {
 
     // Test specific user login
     const testEmail = 'john@the4oc.com'
-    const testUser = users.find((u: any) => u.email === testEmail)
+    const testUser = users.find((u: User) => u.email === testEmail)
     
     if (testUser) {
       console.log(`🧪 Testing login for ${testEmail}:`)
@@ -83,8 +83,8 @@ async function checkUsers() {
 
     console.log('\n📋 Summary:')
     console.log(`   Total users: ${users.length}`)
-    console.log(`   Users with passwords: ${users.filter((u: any) => u.password).length}`)
-    console.log(`   Users without passwords: ${users.filter((u: any) => !u.password).length}`)
+    console.log(`   Users with passwords: ${users.filter((u: User) => u.password).length}`)
+    console.log(`   Users without passwords: ${users.filter((u: User) => !u.password).length}`)
 
   } catch (error) {
     console.error('❌ Error checking users:', error)

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import type { Campaign, Contact, Activity, ActivityType } from '@prisma/client'
+import type { Campaign, Contact, Activity, ActivityType, User, Prisma } from '@prisma/client'
 
 export interface CreateCampaignData {
   name: string
@@ -69,7 +69,7 @@ export class CampaignService {
     const { page = 1, limit = 10, sector, startDate, endDate } = options
     const skip = (page - 1) * limit
 
-    const where: any = {}
+    const where: Prisma.CampaignWhereInput = {}
     if (sector) {
       where.sector = sector
     }
@@ -106,7 +106,7 @@ export class CampaignService {
   }
 
   async getCampaignById(id: string): Promise<Campaign & {
-    users: any[]
+    users: User[]
     contacts: Contact[]
     activities: Activity[]
   } | null> {
