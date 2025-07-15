@@ -31,8 +31,7 @@ const Slideover = React.forwardRef<HTMLDivElement, SlideoverProps>(
       closeOnEscape = true,
       showCloseButton = true,
       ...props
-    },
-    ref
+    }
   ) => {
     const slideoverRef = useRef<HTMLDivElement>(null)
     const previousFocusRef = useRef<HTMLElement | null>(null)

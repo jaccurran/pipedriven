@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ActivityService } from '@/server/services/activityService'
+import { ActivityService, UpdateActivityData } from '@/server/services/activityService'
 import { getServerSession } from '@/lib/auth'
 import { z } from 'zod'
-import type { ActivityType } from '@prisma/client'
 
 // Validation schemas
 const updateActivitySchema = z.object({
@@ -59,7 +58,7 @@ export async function PUT(
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
@@ -67,29 +66,26 @@ export async function PUT(
     let validatedData
     try {
       validatedData = updateActivitySchema.parse(body)
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
     }
 
     // Transform date if provided
     if (validatedData.dueDate) {
-      validatedData.dueDate = new Date(validatedData.dueDate)
+      const dueDate = new Date(validatedData.dueDate)
+      validatedData = { ...validatedData, dueDate }
     }
 
     // Create service instance and update activity
     const { id } = await params
     const activityService = new ActivityService()
-    const activity = await activityService.updateActivity(id, validatedData)
+    const activity = await activityService.updateActivity(id, validatedData as UpdateActivityData)
 
     return NextResponse.json(activity)
-  } catch (error) {
-    console.error('Error in PUT /api/activities/[id]:', error)
+  } catch {
+    console.error('Error in PUT /api/activities/[id]')
     
     // Handle specific error cases
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
-    }
-    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -111,14 +107,10 @@ export async function DELETE(
     const activity = await activityService.deleteActivity(id)
 
     return NextResponse.json(activity)
-  } catch (error) {
-    console.error('Error in DELETE /api/activities/[id]:', error)
+  } catch {
+    console.error('Error in DELETE /api/activities/[id]')
     
     // Handle specific error cases
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
-    }
-    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

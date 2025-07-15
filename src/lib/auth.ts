@@ -6,7 +6,7 @@ import { verifyPassword } from '@/lib/auth-utils'
 import type { UserRole } from '@prisma/client'
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as unknown as NextAuthOptions['adapter'],
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -67,7 +67,13 @@ export const authOptions: NextAuthOptions = {
             name: user.name,
             role: user.role,
             pipedriveApiKey: user.pipedriveApiKey,
-          } as any // Type assertion to handle adapter compatibility
+          } as {
+            id: string;
+            email: string;
+            name: string | null;
+            role: UserRole;
+            pipedriveApiKey: string | null;
+          }
         } catch (error) {
           console.error('❌ Auth error:', error)
           return null
@@ -76,63 +82,18 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       console.log('🔐 signIn callback called:', { userId: user?.id, accountType: account?.type })
       return true
     },
-    async jwt({ token, user, account }) {
-      console.log('🔐 jwt callback called:', { 
-        tokenId: token?.id, 
-        userId: user?.id,
-        hasUser: !!user,
-        hasAccount: !!account
-      })
-      
-      // Initial sign in
-      if (account && user) {
-        console.log('🔐 Initial sign in - setting token data')
-        return {
-          ...token,
-          id: user.id,
-          role: user.role,
-          email: user.email,
-          name: user.name,
-          pipedriveApiKey: user.pipedriveApiKey,
-        }
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id
+        token.email = user.email
+        token.name = user.name
+        token.role = user.role
+        token.pipedriveApiKey = user.pipedriveApiKey
       }
-      
-      // If we have a token but no user, fetch the latest user data from database
-      if (token?.id && !user) {
-        console.log('🔐 Fetching latest user data from database')
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              role: true,
-              pipedriveApiKey: true,
-            },
-          })
-          
-          if (dbUser) {
-            console.log('🔐 Updated token with latest user data')
-            return {
-              ...token,
-              id: dbUser.id,
-              role: dbUser.role,
-              email: dbUser.email,
-              name: dbUser.name,
-              pipedriveApiKey: dbUser.pipedriveApiKey,
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error fetching user data in JWT callback:', error)
-        }
-      }
-      
-      // Return previous token if the access token has not expired yet
       return token
     },
     async session({ session, token }) {
@@ -190,7 +151,7 @@ export function hasRole(userRole: UserRole, requiredRole: UserRole): boolean {
 
 // Helper function to require authentication
 export function requireAuth() {
-  return async (req: Request) => {
+  return async () => {
     const user = await getCurrentUser()
     if (!user) {
       throw new Error('Authentication required')
@@ -201,7 +162,7 @@ export function requireAuth() {
 
 // Helper function to require specific role
 export function requireRole(role: UserRole) {
-  return async (req: Request) => {
+  return async () => {
     const user = await getCurrentUser()
     if (!user) {
       throw new Error('Authentication required')

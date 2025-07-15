@@ -5,6 +5,8 @@ import { createPipedriveService } from '@/server/services/pipedriveService'
 import { OrganizationService } from '@/server/services/organizationService'
 import { createApiError, createApiSuccess } from '@/lib/errors/apiErrors'
 import { z } from 'zod'
+import { PipedriveService, PipedriveContact } from '@/server/services/pipedriveService'
+import { Organization } from '@/lib/types'
 
 // Validation schema for sync request
 const syncRequestSchema = z.object({
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest) {
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return createApiError('Invalid JSON in request body', 400)
     }
 
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
       return createApiError(`Validation failed: ${errors}`, 400)
     }
 
-    const { syncType, sinceTimestamp, contactIds, force } = validationResult.data
+    const { syncType, sinceTimestamp, contactIds } = validationResult.data
 
     // 3. Get user with API key
     const user = await prisma.user.findUnique({
@@ -101,12 +103,12 @@ export async function POST(request: NextRequest) {
         if (!sinceTimestamp) {
           throw new Error('sinceTimestamp is required for incremental sync')
         }
-        syncResult = await performIncrementalSync(pipedriveService, session.user.id, sinceTimestamp)
+        syncResult = await performIncrementalSync(pipedriveService, session.user.id)
       } else if (syncType === 'SEARCH') {
         if (!contactIds || contactIds.length === 0) {
           throw new Error('contactIds is required for search sync')
         }
-        syncResult = await performSearchSync(pipedriveService, session.user.id, contactIds)
+        syncResult = await performSearchSync(pipedriveService, session.user.id)
       }
 
       // 8. Update sync history with success
@@ -116,10 +118,10 @@ export async function POST(request: NextRequest) {
           status: 'SUCCESS',
           endTime: new Date(),
           duration: Date.now() - startTime,
-          contactsProcessed: syncResult.contactsProcessed,
-          contactsUpdated: syncResult.contactsUpdated,
-          contactsCreated: syncResult.contactsCreated,
-          contactsFailed: syncResult.contactsFailed,
+          contactsProcessed: syncResult?.contactsProcessed ?? 0,
+          contactsUpdated: syncResult?.contactsUpdated ?? 0,
+          contactsCreated: syncResult?.contactsCreated ?? 0,
+          contactsFailed: syncResult?.contactsFailed ?? 0,
         }
       })
 
@@ -133,11 +135,11 @@ export async function POST(request: NextRequest) {
         syncId: syncHistory.id,
         syncType,
         results: {
-          total: syncResult.contactsProcessed,
-          processed: syncResult.contactsProcessed,
-          updated: syncResult.contactsUpdated,
-          created: syncResult.contactsCreated,
-          failed: syncResult.contactsFailed,
+          total: syncResult?.contactsProcessed ?? 0,
+          processed: syncResult?.contactsProcessed ?? 0,
+          updated: syncResult?.contactsUpdated ?? 0,
+          created: syncResult?.contactsCreated ?? 0,
+          failed: syncResult?.contactsFailed ?? 0,
           errors: []
         },
         timestamp: new Date().toISOString(),
@@ -186,11 +188,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function performFullSync(pipedriveService: any, userId: string) {
+async function performFullSync(pipedriveService: PipedriveService, userId: string) {
   const pipedriveResponse = await pipedriveService.getPersons()
   
   // Handle case where getPersons returns an array directly (for testing)
-  let pipedriveContacts: any[] = []
+  let pipedriveContacts: PipedriveContact[] = []
   if (Array.isArray(pipedriveResponse)) {
     pipedriveContacts = pipedriveResponse
   } else if (pipedriveResponse.success) {
@@ -214,7 +216,7 @@ async function performFullSync(pipedriveService: any, userId: string) {
   let contactsFailed = 0
 
   // Process organizations first to create/link them
-  const organizationMap = new Map()
+  const organizationMap = new Map<string, Organization>()
   const contactsWithOrgs = pipedriveContacts.filter(contact => contact.org_id)
   if (contactsWithOrgs.length > 0) {
     const orgResponse = await pipedriveService.getOrganizations()
@@ -225,7 +227,7 @@ async function performFullSync(pipedriveService: any, userId: string) {
           pipedriveOrgId: org.id.toString(),
           address: org.address
         })
-        organizationMap.set(org.id.toString(), organization)
+        organizationMap.set(org.id.toString(), organization as Organization)
       }
     }
   }
@@ -274,26 +276,28 @@ async function performFullSync(pipedriveService: any, userId: string) {
   }
 }
 
-async function performIncrementalSync(pipedriveService: any, userId: string, sinceTimestamp: string) {
+async function performIncrementalSync(pipedriveService: PipedriveService, userId: string) {
   // For now, we'll do a full sync since the Pipedrive service doesn't support incremental yet
   // In a real implementation, you would use the sinceTimestamp to fetch only changed contacts
   return await performFullSync(pipedriveService, userId)
 }
 
-async function performSearchSync(pipedriveService: any, userId: string, contactIds: string[]) {
+async function performSearchSync(pipedriveService: PipedriveService, userId: string) {
   // For now, we'll do a full sync since the Pipedrive service doesn't support search sync yet
   // In a real implementation, you would fetch only the specified contacts
   return await performFullSync(pipedriveService, userId)
 }
 
-async function mapPipedriveContact(pipedriveContact: any, organizationMap: Map<string, any>, userId: string) {
+async function mapPipedriveContact(pipedriveContact: PipedriveContact, organizationMap: Map<string, Organization>, userId: string) {
   // Extract primary email
-  const primaryEmail = pipedriveContact.email?.find(e => e.primary)?.value || 
-                     pipedriveContact.email?.[0]?.value || null
+  const primaryEmail = Array.isArray(pipedriveContact.email) && pipedriveContact.email.length > 0
+    ? pipedriveContact.email[0]
+    : null
 
   // Extract primary phone
-  const primaryPhone = pipedriveContact.phone?.find(p => p.primary)?.value || 
-                     pipedriveContact.phone?.[0]?.value || null
+  const primaryPhone = Array.isArray(pipedriveContact.phone) && pipedriveContact.phone.length > 0
+    ? pipedriveContact.phone[0]
+    : null
 
   // Safely parse the date
   let lastPipedriveUpdate: Date | null = null
@@ -319,7 +323,7 @@ async function mapPipedriveContact(pipedriveContact: any, organizationMap: Map<s
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Get user session
     const session = await getServerSession()

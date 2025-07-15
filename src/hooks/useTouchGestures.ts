@@ -47,7 +47,6 @@ export function useTouchGestures(
     onDoubleTap,
     onLongPress,
     minSwipeDistance = 50,
-    minPinchDistance = 10,
     longPressDelay = 500,
     doubleTapDelay = 300,
   } = options

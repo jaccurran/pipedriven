@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     let validatedParams
     try {
       validatedParams = queryParamsSchema.parse(queryParams)
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid query parameters' }, { status: 400 })
     }
 
@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json(result)
-  } catch (error) {
-    console.error('Error in GET /api/contacts:', error)
+  } catch {
+    console.error('Error in GET /api/contacts')
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -110,14 +110,15 @@ export async function POST(request: NextRequest) {
     // Create service instance and create contact
     const contactService = new ContactService()
     const contact = await contactService.createContact({
+      name: cleanData.name as string,
       ...cleanData,
       userId: session.user.id,
     })
 
     console.log('Created contact:', contact)
     return NextResponse.json(contact, { status: 201 })
-  } catch (error) {
-    console.error('Error in POST /api/contacts:', error)
+  } catch {
+    console.error('Error in POST /api/contacts')
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

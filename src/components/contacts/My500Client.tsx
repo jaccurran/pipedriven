@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useDebouncedCallback } from 'use-debounce'
 import type { ContactWithActivities } from '@/lib/my-500-data'
@@ -15,6 +15,7 @@ import { Button, Modal, Input, Select } from '@/components/ui'
 import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
 import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 import { QuickActionToggle } from '@/components/ui/QuickActionToggle'
+import { type User } from '@prisma/client'
 
 interface PaginationInfo {
   page: number
@@ -37,14 +38,13 @@ interface My500ClientProps {
   initialContacts: ContactWithActivities[]
   initialPagination?: PaginationInfo
   initialSyncStatus?: SyncStatus
-  user: any
+  user: User
 }
 
 export function My500Client({ 
   initialContacts, 
   initialPagination, 
-  initialSyncStatus, 
-  user 
+  initialSyncStatus
 }: My500ClientProps) {
   const { data: session } = useSession()
   
@@ -57,7 +57,7 @@ export function My500Client({
   const [page, setPage] = useState(1)
   
   // React Query hooks
-  const { data: contactsData, isLoading, error } = useMy500Contacts({
+  const { data: contactsData, isLoading } = useMy500Contacts({
     search: debouncedSearchTerm,
     page,
     limit: 20,
@@ -70,8 +70,8 @@ export function My500Client({
   const { data: syncStatusData } = useSyncStatus()
   
   // Extract data with fallbacks
-  const contacts = (contactsData as any)?.data?.contacts || initialContacts
-  const pagination = (contactsData as any)?.data?.pagination || initialPagination || {
+  const contacts = (contactsData?.data?.contacts as ContactWithActivities[]) || initialContacts
+  const pagination = (contactsData?.data?.pagination as PaginationInfo) || initialPagination || {
     page: 1,
     limit: 20,
     total: initialContacts.length,
@@ -91,8 +91,8 @@ export function My500Client({
   const [selectedContact, setSelectedContact] = useState<ContactWithActivities | null>(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
-  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false)
+  const [campaigns] = useState<Array<{ id: string; name: string }>>([])
+
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
@@ -108,39 +108,7 @@ export function My500Client({
     300
   )
 
-  // Fetch contacts from API
-  const fetchContacts = useCallback(async (
-    searchQuery: string = '',
-    pageNum: number = 1,
-    filterValue: string = '',
-    sortField: string = 'warmnessScore',
-    sortOrder: 'asc' | 'desc' = 'asc'
-  ) => {
-    const params = new URLSearchParams({
-      page: pageNum.toString(),
-      limit: pagination.limit.toString(),
-      q: searchQuery,
-      filter: filterValue,
-      sort: sortField,
-      order: sortOrder,
-    })
 
-    try {
-      const response = await fetch(`/api/my-500/search?${params}`, {
-        credentials: 'include'
-      })
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success) {
-          return result.data
-        }
-      }
-      throw new Error('Failed to fetch contacts')
-    } catch (error) {
-      console.error('Error fetching contacts:', error)
-      throw error
-    }
-  }, [pagination.limit])
 
   // Handle search
   const handleSearch = useCallback((term: string) => {
@@ -170,7 +138,7 @@ export function My500Client({
   const handleSync = useCallback(async () => {
     if (isSyncing) return
     
-    let syncData: any
+    let syncData: { syncType: 'INCREMENTAL' | 'FULL'; sinceTimestamp?: string }
     
     // Determine sync type based on whether we have a last sync time
     if (syncStatus.lastSync) {
@@ -187,8 +155,9 @@ export function My500Client({
     try {
       const result = await syncMutation.mutateAsync(syncData)
       
-      if (result.success) {
-        setSuccessMessage(`Sync completed: ${result.data.results.updated} updated, ${result.data.results.created} created`)
+      if (result.success && result.data?.results) {
+        const results = result.data.results as { updated: number; created: number }
+        setSuccessMessage(`Sync completed: ${results.updated} updated, ${results.created} created`)
         setShowSuccessMessage(true)
         setTimeout(() => setShowSuccessMessage(false), 3000)
       }
@@ -207,7 +176,7 @@ export function My500Client({
   const handlePrimaryAction = useCallback(async (contact: ContactWithActivities, type: ActionType) => {
     // For test integration - expose mode globally
     if (typeof window !== 'undefined') {
-      (window as any).__quickActionMode = quickActionMode
+      (window as unknown as Record<string, unknown>).__quickActionMode = quickActionMode
     }
 
     if (quickActionMode === 'SIMPLE') {
@@ -255,28 +224,12 @@ export function My500Client({
       
       // For test integration
       if (typeof window !== 'undefined') {
-        (window as any).__modalShown = true
+        (window as unknown as Record<string, unknown>).__modalShown = true
       }
       
-      // Fetch campaigns if needed
-      if (session?.user?.id && campaigns.length === 0) {
-        setLoadingCampaigns(true)
-        try {
-          const response = await fetch('/api/campaigns', {
-            credentials: 'include'
-          })
-          if (response.ok) {
-            const data = await response.json()
-            setCampaigns(data.campaigns || [])
-          }
-        } catch (error) {
-          console.error('Failed to fetch campaigns:', error)
-        } finally {
-          setLoadingCampaigns(false)
-        }
-      }
+
     }
-  }, [session?.user?.id, campaigns.length, quickActionMode])
+  }, [quickActionMode])
 
   const handleSecondaryAction = useCallback(async (type: SecondaryActionType) => {
     if (!selectedContact) return
@@ -290,7 +243,14 @@ export function My500Client({
     setShowActivityModal(true)
   }, [selectedContact])
 
-  const handleActivitySubmit = useCallback(async (activityData: any) => {
+  const handleActivitySubmit = useCallback(async (activityData: {
+    type: string;
+    subject?: string;
+    note?: string;
+    dueDate?: Date;
+    contactId?: string;
+    campaignId?: string;
+  }) => {
     try {
       const cleanedData = {
         ...activityData,

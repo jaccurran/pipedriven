@@ -1,10 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/auth'
-import { authOptions } from '@/lib/auth'
 import { createPipedriveService } from '@/server/services/pipedriveService'
 import { prisma } from '@/lib/prisma'
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     // Get user session
     const session = await getServerSession()
@@ -48,7 +47,14 @@ export async function POST(request: NextRequest) {
     // Sync each activity
     const results = await Promise.allSettled(
       activities.map(async (activity) => {
-        const result = await pipedriveService.createActivity(activity)
+        // Only pass pipedrivePersonId in contact
+        const activityForSync = {
+          ...activity,
+          contact: activity.contact
+            ? { pipedrivePersonId: activity.contact.pipedrivePersonId }
+            : undefined,
+        }
+        const result = await pipedriveService.createActivity(activityForSync)
         
         // If successful, update the activity with Pipedrive ID
         if (result.success && result.activityId) {
@@ -84,7 +90,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Get user session
     const session = await getServerSession()

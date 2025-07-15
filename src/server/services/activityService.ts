@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import type { Activity, ActivityType, Contact, User, Prisma } from '@prisma/client'
+import type { Activity, ActivityType, Contact, Prisma } from '@prisma/client'
 
 export interface CreateActivityData {
   type: ActivityType

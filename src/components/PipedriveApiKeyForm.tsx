@@ -33,7 +33,7 @@ interface TestResult {
   }
 }
 
-export function PipedriveApiKeyForm({ userId, currentApiKey }: PipedriveApiKeyFormProps) {
+export function PipedriveApiKeyForm({ currentApiKey }: PipedriveApiKeyFormProps) {
   const [apiKey, setApiKey] = useState(currentApiKey || '')
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -63,7 +63,7 @@ export function PipedriveApiKeyForm({ userId, currentApiKey }: PipedriveApiKeyFo
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to update API key' })
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An unexpected error occurred' })
     } finally {
       setIsLoading(false)
@@ -97,7 +97,7 @@ export function PipedriveApiKeyForm({ userId, currentApiKey }: PipedriveApiKeyFo
       } else {
         setMessage({ type: 'error', text: data.error || 'Connection failed' })
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to test connection' })
     } finally {
       setIsLoading(false)

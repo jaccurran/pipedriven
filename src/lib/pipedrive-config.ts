@@ -112,7 +112,7 @@ function mergeConfig(): PipedriveConfig {
   return {
     ...defaultConfig,
     ...Object.fromEntries(
-      Object.entries(envConfig).filter(([_, value]) => 
+      Object.entries(envConfig).filter(([, value]) => 
         value !== undefined && 
         value !== null && 
         value !== ''

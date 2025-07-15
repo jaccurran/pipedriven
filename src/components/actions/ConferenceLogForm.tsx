@@ -1,5 +1,5 @@
 import React from 'react'
-import { ActivityLogForm, ActivityLogFormData, ActivityType } from './ActivityLogForm'
+import { ActivityLogForm, ActivityLogFormData } from './ActivityLogForm'
 
 interface ConferenceLogFormProps {
   contactName: string

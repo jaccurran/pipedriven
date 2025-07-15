@@ -6,6 +6,17 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { ActivityForm } from '@/components/activities/ActivityForm'
 import Link from 'next/link'
 
+
+// Import the ActivityFormData type
+interface ActivityFormData {
+  type: 'CALL' | 'EMAIL' | 'MEETING' | 'LINKEDIN' | 'REFERRAL' | 'CONFERENCE'
+  subject: string
+  note?: string
+  dueDate?: Date
+  contactId?: string
+  campaignId?: string
+}
+
 export default async function NewActivityPage() {
   const session = await getServerSession(authOptions)
   
@@ -58,19 +69,17 @@ export default async function NewActivityPage() {
     organisation: contact.organisation === null ? undefined : contact.organisation,
   }))
 
-  const handleSubmit = async (activityData: any) => {
-    'use server'
-    
+  const handleSubmit = async (activity: ActivityFormData) => {
     try {
       await prisma.activity.create({
         data: {
-          type: activityData.type,
-          subject: activityData.subject,
-          note: activityData.note,
-          dueDate: activityData.dueDate,
+          type: activity.type,
+          subject: activity.subject,
+          note: activity.note,
+          dueDate: activity.dueDate || null,
           userId: user.id,
-          contactId: activityData.contactId || null,
-          campaignId: activityData.campaignId || null,
+          contactId: activity.contactId || null,
+          campaignId: activity.campaignId || null,
         },
       })
       

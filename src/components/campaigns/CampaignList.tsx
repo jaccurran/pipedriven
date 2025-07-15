@@ -13,7 +13,7 @@ interface CampaignListProps {
   onDelete?: (campaign: Campaign) => void
 }
 
-export function CampaignList({ campaigns, user, onEdit, onDelete }: CampaignListProps) {
+export function CampaignList({ campaigns, onEdit, onDelete }: CampaignListProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
@@ -41,12 +41,7 @@ export function CampaignList({ campaigns, user, onEdit, onDelete }: CampaignList
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
-  }
+
 
   const formatDate = (date: Date | null) => {
     if (!date) return 'Not set'

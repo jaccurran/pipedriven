@@ -44,12 +44,21 @@ export async function GET(request: NextRequest) {
       if (limit && isNaN(Number(limit))) {
         return NextResponse.json({ error: 'Invalid query parameters' }, { status: 400 })
       }
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid query parameters' }, { status: 400 })
     }
 
     // Build filters
-    const filters: any = {
+    const filters: {
+      userId: string;
+      page: number;
+      limit: number;
+      type?: ActivityType;
+      contactId?: string;
+      campaignId?: string;
+      dateFrom?: Date;
+      dateTo?: Date;
+    } = {
       userId: session.user.id,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 10,
@@ -66,9 +75,12 @@ export async function GET(request: NextRequest) {
     const result = await activityService.getActivities(filters)
 
     return NextResponse.json(result)
-  } catch (error) {
-    console.error('Error in GET /api/activities:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch {
+    console.error('Failed to fetch activities');
+    return NextResponse.json(
+      { error: 'Failed to fetch activities' },
+      { status: 500 }
+    );
   }
 }
 
@@ -84,7 +96,7 @@ export async function POST(request: NextRequest) {
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
@@ -92,11 +104,10 @@ export async function POST(request: NextRequest) {
     let validatedData
     try {
       validatedData = createActivitySchema.parse(body)
-    } catch (error) {
-      console.error('Activity validation error:', error)
+    } catch {
+      console.error('Activity validation error')
       return NextResponse.json({ 
-        error: 'Validation failed', 
-        details: error instanceof Error ? error.message : 'Unknown validation error'
+        error: 'Validation failed'
       }, { status: 400 })
     }
 
@@ -104,19 +115,19 @@ export async function POST(request: NextRequest) {
     const activityService = new ActivityService()
     const activity = await activityService.createActivity({
       ...validatedData,
+      note: validatedData.note ?? undefined,
+      contactId: validatedData.contactId ?? undefined,
+      campaignId: validatedData.campaignId ?? undefined,
       dueDate: validatedData.dueDate ? new Date(validatedData.dueDate) : undefined,
       userId: session.user.id,
     })
 
     return NextResponse.json(activity, { status: 201 })
-  } catch (error) {
-    console.error('Error in POST /api/activities:', error)
-    
-    // Handle specific error cases
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
-    }
-    
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch {
+    console.error('Failed to create activity');
+    return NextResponse.json(
+      { error: 'Failed to create activity' },
+      { status: 500 }
+    );
   }
 } 

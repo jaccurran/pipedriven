@@ -118,7 +118,7 @@ export function DashboardOverview({ user }: DashboardOverviewProps) {
                 Welcome back, {user.name}!
               </h1>
               <p className="text-gray-600">
-                Here's what's happening with your lead sourcing campaigns.
+                Here&apos;s what&apos;s happening with your lead sourcing campaigns.
               </p>
             </div>
             <div className="text-right">

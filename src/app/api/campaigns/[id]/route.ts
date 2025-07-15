@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { CampaignService } from '@/server/services/campaignService'
 
 export async function GET(
   request: NextRequest,
@@ -46,6 +47,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     let body
     try {
       body = await request.json()
@@ -65,7 +72,17 @@ export async function PUT(
     }
 
     // Validate and parse dates
-    const updateData: any = {}
+    const updateData: {
+      name?: string;
+      description?: string;
+      sector?: string;
+      theme?: string;
+      status?: string;
+      startDate?: Date;
+      endDate?: Date;
+      targetLeads?: number;
+      budget?: number;
+    } = {}
 
     if (body.name !== undefined) {
       updateData.name = body.name.trim()
@@ -120,11 +137,11 @@ export async function PUT(
       throw error
     }
   } catch (error) {
-    console.error('Error updating campaign:', error)
+    console.error('Failed to update campaign:', error);
     return NextResponse.json(
       { error: 'Failed to update campaign' },
       { status: 500 }
-    )
+    );
   }
 }
 
@@ -133,6 +150,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     try {
       const { id } = await params
       const campaignService = new CampaignService()

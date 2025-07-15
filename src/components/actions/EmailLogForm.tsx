@@ -113,7 +113,7 @@ export function EmailLogForm({
     }
   }
 
-  const handleFieldChange = (name: keyof EmailLogFormData, value: any) => {
+  const handleFieldChange = (name: keyof EmailLogFormData, value: string | boolean) => {
     const updatedData = { ...formData, [name]: value }
     setFormData(updatedData)
     

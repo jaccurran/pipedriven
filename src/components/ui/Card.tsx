@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { cn } from '@/lib/utils'
-import { shadows, borderRadius } from '@/lib/design-tokens'
+
 
 export interface CardProps {
   variant?: 'default' | 'elevated' | 'outlined'

@@ -38,7 +38,7 @@ export function MobileLayout({
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   // Touch gestures for mobile navigation
-  const { touchState } = useTouchGestures(containerRef, {
+  const { touchState } = useTouchGestures(containerRef as React.RefObject<HTMLElement>, {
     onSwipeLeft: () => {
       if (isSidebarOpen) {
         closeSidebar()
@@ -55,7 +55,7 @@ export function MobileLayout({
   })
 
   // Focus management for accessibility
-  const focusManagement = useFocusManagement(sidebarRef, {
+  const focusManagement = useFocusManagement(sidebarRef as React.RefObject<HTMLElement>, {
     trapFocus: enableFocusTrap && isSidebarOpen,
     restoreFocus: true,
     keyboardShortcuts: {

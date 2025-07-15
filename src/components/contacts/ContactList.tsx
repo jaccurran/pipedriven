@@ -5,7 +5,7 @@ import { Contact } from '@prisma/client'
 import type { UserWithoutPassword } from '@/types/user'
 import Link from 'next/link'
 import { ContactCard } from './ContactCard'
-import { Button, Badge } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 interface ContactListProps {
@@ -25,7 +25,6 @@ type FilterTags = 'all' | 'warm' | 'cold' | 'lost'
 
 export function ContactList({ 
   contacts, 
-  user, 
   onEdit, 
   onDelete, 
   onActivity, 

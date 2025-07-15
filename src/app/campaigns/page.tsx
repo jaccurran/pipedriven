@@ -25,6 +25,8 @@ export default async function CampaignsPage() {
       updatedAt: true,
       emailVerified: true,
       image: true,
+      lastSyncTimestamp: true,
+      syncStatus: true,
     },
   })
 

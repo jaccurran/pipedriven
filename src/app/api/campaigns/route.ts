@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     let body
     try {
       body = await request.json()
-    } catch (e) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
     const validation = campaignSchema.safeParse(body)
@@ -66,7 +66,17 @@ export async function POST(request: NextRequest) {
     const campaignService = new CampaignService()
     try {
       // Only pass defined fields
-      const createData: any = { name, status }
+      const createData: {
+        name: string;
+        status: 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+        description?: string;
+        sector?: string;
+        theme?: string;
+        targetLeads?: number;
+        budget?: number;
+        startDate?: Date;
+        endDate?: Date;
+      } = { name, status: status as 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' }
       if (description !== undefined) createData.description = description
       if (sector !== undefined) createData.sector = sector
       if (theme !== undefined) createData.theme = theme
@@ -76,18 +86,18 @@ export async function POST(request: NextRequest) {
       if (parsedEndDate) createData.endDate = parsedEndDate
       const campaign = await campaignService.createCampaign(createData)
       return NextResponse.json(campaign, { status: 201 })
-    } catch (error) {
+    } catch {
       return NextResponse.json(
         { error: 'Failed to create campaign' },
         { status: 500 }
       )
     }
-  } catch (error) {
-    console.error('Error creating campaign:', error)
+  } catch {
+    console.error('Failed to create campaign');
     return NextResponse.json(
       { error: 'Failed to create campaign' },
       { status: 500 }
-    )
+    );
   }
 }
 
@@ -123,7 +133,13 @@ export async function GET(request: NextRequest) {
     const campaignService = new CampaignService()
     try {
       // Only pass defined fields
-      const getOptions: any = {}
+      const getOptions: {
+        page?: number;
+        limit?: number;
+        sector?: string;
+        startDate?: Date;
+        endDate?: Date;
+      } = {}
       if (typeof page === 'number') getOptions.page = page
       if (typeof limit === 'number') getOptions.limit = limit
       if (sector) getOptions.sector = sector
@@ -131,17 +147,17 @@ export async function GET(request: NextRequest) {
       if (parsedEndDate) getOptions.endDate = parsedEndDate
       const result = await campaignService.getCampaigns(getOptions)
       return NextResponse.json(result)
-    } catch (error) {
+    } catch {
       return NextResponse.json(
         { error: 'Failed to fetch campaigns' },
         { status: 500 }
       )
     }
-  } catch (error) {
-    console.error('Error fetching campaigns:', error)
+  } catch {
+    console.error('Failed to fetch campaigns');
     return NextResponse.json(
       { error: 'Failed to fetch campaigns' },
       { status: 500 }
-    )
+    );
   }
 } 

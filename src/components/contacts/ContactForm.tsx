@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
-import { Input, Button, Textarea } from '@/components/ui'
+import { Input, Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
 export interface ContactFormValues {
@@ -28,7 +28,7 @@ interface ContactFormProps {
   mode?: 'create' | 'edit'
 }
 
-function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number) {
+function debounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number) {
   let timeout: ReturnType<typeof setTimeout>
   return (...args: Parameters<T>) => {
     clearTimeout(timeout)
@@ -44,7 +44,7 @@ export function ContactForm({
   cancelLabel = 'Cancel',
   loading = false,
   className,
-  mode = 'create'
+
 }: ContactFormProps) {
   const [formData, setFormData] = useState<ContactFormValues>({
     name: '',
@@ -70,8 +70,9 @@ export function ContactForm({
 
   // Debounced search
   const debouncedOrgSearch = useRef(
-    debounce(async (query: string) => {
-      if (!query || query.length < 3) {
+    debounce(async (query: unknown) => {
+      const queryStr = String(query)
+      if (!queryStr || queryStr.length < 3) {
         setOrgResults([])
         setOrgLoading(false)
         setOrgError(null)
@@ -81,7 +82,7 @@ export function ContactForm({
       setOrgError(null)
       try {
         // Local orgs
-        const localRes = await fetch(`/api/organizations?search=${encodeURIComponent(query)}`)
+        const localRes = await fetch(`/api/organizations?search=${encodeURIComponent(queryStr)}`)
         let localOrgs: OrganizationResult[] = []
         if (localRes.ok) {
           const localData = await localRes.json()
@@ -95,7 +96,7 @@ export function ContactForm({
         const pdRes = await fetch('/api/pipedrive/organizations/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
+          body: JSON.stringify({ query: queryStr })
         })
         let pdOrgs: OrganizationResult[] = []
         if (pdRes.ok) {
@@ -112,7 +113,6 @@ export function ContactForm({
           console.error('Pipedrive search failed:', pdRes.status, pdRes.statusText)
         }
         // Merge, dedupe by name (prefer local)
-        const seen = new Set<string>()
         const merged = [...localOrgs, ...pdOrgs.filter(pd => !localOrgs.some(l => l.name.toLowerCase() === pd.name.toLowerCase()))]
         setOrgResults(merged)
         setOrgLoading(false)
@@ -208,7 +208,7 @@ export function ContactForm({
     if (isValid) {
       onSubmit(formData)
     }
-  }, [formData, onSubmit, validateForm, errors])
+  }, [formData, onSubmit, validateForm])
 
   const handleInputChange = useCallback((field: keyof ContactFormValues, value: string | number) => {
     setFormData(prev => ({
@@ -230,7 +230,7 @@ export function ContactForm({
       }
       return newErrors
     })
-  }, [errors])
+  }, [])
 
   return (
     <form onSubmit={handleSubmit} className={cn('space-y-4', className)} data-testid="contact-form">
@@ -311,7 +311,7 @@ export function ContactForm({
               )}
               {!orgLoading && !orgError && orgQuery.length >= 3 && orgResults.length === 0 && !orgDropdownCreated && (
                 <div className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-blue-600" onClick={() => handleCreateNewOrg(orgQuery)}>
-                  Create "{orgQuery}"
+                  Create &quot;{orgQuery}&quot;
                 </div>
               )}
             </div>

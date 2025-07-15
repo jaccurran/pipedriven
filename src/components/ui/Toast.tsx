@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { createPortal } from 'react-dom'
 
@@ -31,6 +31,13 @@ const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
     const [isVisible, setIsVisible] = useState(false)
     const [isExiting, setIsExiting] = useState(false)
 
+    const handleClose = useCallback(() => {
+      setIsExiting(true)
+      setTimeout(() => {
+        onClose(id)
+      }, 300) // Match transition duration
+    }, [onClose, id])
+
     useEffect(() => {
       // Show toast with animation
       const showTimer = setTimeout(() => {
@@ -46,14 +53,7 @@ const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         clearTimeout(showTimer)
         clearTimeout(dismissTimer)
       }
-    }, [duration])
-
-    const handleClose = () => {
-      setIsExiting(true)
-      setTimeout(() => {
-        onClose(id)
-      }, 300) // Match transition duration
-    }
+    }, [duration, handleClose])
 
     const typeConfig = {
       success: {

@@ -44,7 +44,6 @@ const activityTypes: SelectOption[] = [
 ]
 
 export function ActivityForm({ 
-  userId, 
   contacts, 
   campaigns, 
   onSubmit, 
@@ -119,7 +118,7 @@ export function ActivityForm({
     }
   }
 
-  const handleInputChange = (field: keyof ActivityFormData, value: any) => {
+  const handleInputChange = (field: keyof ActivityFormData, value: string | Date | null | undefined) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     // Clear error when user starts typing
     if (errors[field]) {

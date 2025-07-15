@@ -3,8 +3,19 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { PipedriveService } from '@/server/services/pipedriveService';
 
+interface PipedrivePerson {
+  id: number;
+  name: string;
+  email: string[];
+  phone: string[];
+  org_name?: string;
+  org_id?: number;
+  created: string;
+  updated: string;
+}
+
 // In-memory cache for search results (per user)
-const searchCache = new Map<string, { results: any[]; timestamp: number }>();
+const searchCache = new Map<string, { results: PipedrivePerson[]; timestamp: number }>();
 const userRateLimits = new Map<string, { count: number; resetTime: number }>();
 
 // Cache TTL: 5 minutes
@@ -84,11 +95,17 @@ export async function POST(request: NextRequest) {
     // Search Pipedrive
     console.log(`[Pipedrive Search] Searching for: "${query}"`);
     const pipedriveService = new PipedriveService(user.pipedriveApiKey);
-    const results = await pipedriveService.searchPersons(query);
+    const searchTerms = query.split(' ').filter(term => term.length > 0);
+    const searchResults = await Promise.all(
+      searchTerms.map(async (term: string) => {
+        const result = await pipedriveService.searchPersons(term)
+        return result
+      })
+    )
 
     // Cache the results
     searchCache.set(cacheKey, {
-      results,
+      results: searchResults.flat(), // Flatten all results from different search terms
       timestamp: now
     });
 
@@ -102,11 +119,11 @@ export async function POST(request: NextRequest) {
 
     // Clean up old rate limit entries
     const oldRateLimits = Array.from(userRateLimits.entries())
-      .filter(([_, limit]) => now > limit.resetTime);
+      .filter(([, limit]) => now > limit.resetTime);
     oldRateLimits.forEach(([key]) => userRateLimits.delete(key));
 
     return NextResponse.json({ 
-      results,
+      results: searchResults.flat(), // Return flattened results
       cached: false 
     });
 

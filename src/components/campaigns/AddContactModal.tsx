@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { useFocusManagement } from "@/hooks/useFocusManagement";
+
 
 interface Contact {
   id: string | number;
@@ -53,13 +53,13 @@ export function AddContactModal({
   const lastSearchedQuery = useRef<string>("");
 
   // Focus management
-  const focusManagement = useFocusManagement(modalRef, {
-    trapFocus: true,
-    restoreFocus: true,
-    keyboardShortcuts: {
-      'escape': onClose,
-    },
-  });
+  // const focusManagement = useFocusManagement(modalRef, {
+  //   trapFocus: true,
+  //   restoreFocus: true,
+  //   keyboardShortcuts: {
+  //     'escape': onClose,
+  //   },
+  // });
 
   // Debounce search query with 400ms delay
   useEffect(() => {

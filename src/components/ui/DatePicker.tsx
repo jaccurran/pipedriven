@@ -36,9 +36,9 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
     id,
     name,
     ...props
-  }, ref) => {
+  }) => {
     // Filter out props that shouldn't be passed to DOM elements
-    const { placeholderText, ...domProps } = props as Omit<typeof props, 'placeholderText'>
+    const { ...domProps } = props as Omit<typeof props, 'placeholderText'>
 
     const [isOpen, setIsOpen] = useState(false)
     const [currentMonth, setCurrentMonth] = useState(() => {
@@ -237,6 +237,8 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
             role="combobox"
             aria-expanded={isOpen}
             aria-haspopup="listbox"
+            aria-controls={isOpen ? `${datePickerId}-listbox` : undefined}
+            aria-activedescendant={isOpen && focusedDate ? `${datePickerId}-option-${focusedDate.toISOString()}` : undefined}
             aria-describedby={error ? errorId : undefined}
             aria-invalid={error ? 'true' : 'false'}
             {...domProps}

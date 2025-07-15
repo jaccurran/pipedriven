@@ -8,9 +8,7 @@ import {
 } from '@/types/my500'
 import { 
   buildWhereClause, 
-  buildOrderByClause, 
-  calculatePagination, 
-  getAppliedFilters 
+  buildOrderByClause
 } from '@/lib/validation/my500'
 
 export class My500Service {
@@ -49,7 +47,7 @@ export class My500Service {
    * Get sync status for a user
    */
   async getSyncStatus(userId: string): Promise<My500SyncStatus> {
-    const [user, totalContacts] = await Promise.all([
+    const [, totalContacts] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
         select: { lastSyncTimestamp: true }
@@ -79,7 +77,7 @@ export class My500Service {
   /**
    * Get available filters for a user
    */
-  async getAvailableFilters(userId: string): Promise<My500Filters> {
+  async getAvailableFilters(): Promise<My500Filters> {
     // For now, return static filters
     // This could be enhanced to return dynamic filters based on user's data
     return {
@@ -91,11 +89,10 @@ export class My500Service {
   /**
    * Get contact by ID with activities
    */
-  async getContactById(contactId: string, userId: string): Promise<My500Contact | null> {
+  async getContactById(contactId: string): Promise<My500Contact | null> {
     const contact = await prisma.contact.findFirst({
       where: { 
-        id: contactId, 
-        userId 
+        id: contactId
       },
       include: {
         activities: {

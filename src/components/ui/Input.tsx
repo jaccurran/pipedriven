@@ -34,12 +34,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       id,
       name,
       autoComplete,
-      maxLength,
       ...props
     },
     ref
   ) => {
-    const inputId = id || name || `input-${React.useId()}`
+    const reactId = React.useId()
+    const inputId = id || name || `input-${reactId}`
     const errorId = `${inputId}-error`
 
 

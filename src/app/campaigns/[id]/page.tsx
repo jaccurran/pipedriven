@@ -3,8 +3,6 @@ import { redirect, notFound } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import type { UserWithoutPassword } from '@/types/user'
-import { CampaignContactList } from '@/components/campaigns/CampaignContactList'
 import { CampaignContactsWrapper } from '@/components/campaigns/CampaignContactsWrapper'
 
 interface CampaignDetailPageProps {
@@ -32,6 +30,9 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
       updatedAt: true,
       emailVerified: true,
       image: true,
+      lastSyncTimestamp: true,
+      syncStatus: true,
+      password: true,
     },
   })
 
@@ -63,12 +64,12 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount)
-  }
+  // const formatCurrency = (amount: number) => {
+  //   return new Intl.NumberFormat('en-US', {
+  //     style: 'currency',
+  //     currency: 'USD',
+  //   }).format(amount)
+  // }
 
   const formatDate = (date: Date | null) => {
     if (!date) return 'Not set'

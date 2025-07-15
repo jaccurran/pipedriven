@@ -14,6 +14,15 @@ interface CampaignFormData {
   targetLeads: number
 }
 
+interface CampaignFormErrors {
+  name?: string
+  description?: string
+  status?: string
+  startDate?: string
+  endDate?: string
+  targetLeads?: string
+}
+
 interface CampaignFormProps {
   user: UserWithoutPassword
   campaign?: Campaign
@@ -21,7 +30,7 @@ interface CampaignFormProps {
   onCancel?: () => void
 }
 
-export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFormProps) {
+export function CampaignForm({ campaign, onSubmit, onCancel }: CampaignFormProps) {
   const [formData, setFormData] = useState<CampaignFormData>({
     name: '',
     description: '',
@@ -31,7 +40,7 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
     targetLeads: 0,
   })
   
-  const [errors, setErrors] = useState<Partial<CampaignFormData>>({})
+  const [errors, setErrors] = useState<CampaignFormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -40,15 +49,15 @@ export function CampaignForm({ user, campaign, onSubmit, onCancel }: CampaignFor
         name: campaign.name,
         description: campaign.description || '',
         status: campaign.status,
-        startDate: campaign.startDate.toISOString().split('T')[0],
-        endDate: campaign.endDate.toISOString().split('T')[0],
-        targetLeads: campaign.targetLeads,
+        startDate: campaign.startDate?.toISOString().split('T')[0] || '',
+        endDate: campaign.endDate?.toISOString().split('T')[0] || '',
+        targetLeads: campaign.targetLeads || 0,
       })
     }
   }, [campaign])
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<CampaignFormData> = {}
+    const newErrors: CampaignFormErrors = {}
 
     if (!formData.name.trim()) {
       newErrors.name = 'Campaign name is required'

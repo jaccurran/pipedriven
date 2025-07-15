@@ -51,7 +51,7 @@ export function formatErrorResponse(error: unknown): {
   success: false; 
   error: string; 
   code?: string;
-  details?: any;
+  details?: Record<string, unknown>;
 } {
   if (error instanceof ApiError) {
     return {
@@ -78,7 +78,7 @@ export function formatErrorResponse(error: unknown): {
 }
 
 // Error logging utility
-export function logError(error: unknown, context?: Record<string, any>) {
+export function logError(error: unknown, context?: Record<string, unknown>) {
   const timestamp = new Date().toISOString()
   const errorInfo = {
     timestamp,
@@ -94,7 +94,7 @@ export function logError(error: unknown, context?: Record<string, any>) {
 }
 
 // Error handler for async functions
-export function withErrorHandling<T extends any[], R>(
+export function withErrorHandling<T extends unknown[], R>(
   fn: (...args: T) => Promise<R>
 ) {
   return async (...args: T): Promise<R> => {
@@ -110,10 +110,54 @@ export function withErrorHandling<T extends any[], R>(
 // Utility for Next.js API error response
 import { NextResponse } from 'next/server'
 
-export function createApiError(message: string, status: number = 500, code?: string) {
-  return NextResponse.json({ success: false, error: message, code }, { status })
+export function createApiError(message: string, statusCode: number = 500, details?: Record<string, unknown>) {
+  return NextResponse.json({ success: false, error: message, code: 'UNKNOWN_ERROR', details }, { status: statusCode })
 }
 
 export function createApiSuccess<T>(data: T, status: number = 200) {
   return NextResponse.json({ success: true, data }, { status })
+} 
+
+// Error response type
+export interface ApiErrorResponse {
+  success: false;
+  error: string;
+  code?: string;
+  details?: Record<string, unknown>;
+}
+
+export function handleApiError(error: unknown, defaultMessage: string = 'Internal server error'): ApiErrorResponse {
+  if (error instanceof ApiError) {
+    return {
+      success: false,
+      error: error.message,
+      code: error.code,
+      details: error instanceof ValidationError ? { field: error.field } : undefined
+    }
+  }
+
+  if (error instanceof Error) {
+    return {
+      success: false,
+      error: error.message,
+      code: 'UNKNOWN_ERROR'
+    }
+  }
+
+  return {
+    success: false,
+    error: defaultMessage,
+    code: 'UNKNOWN_ERROR'
+  }
+}
+
+// Zod validation utility
+import { ZodSchema } from 'zod'
+
+export function validateApiRequest<T>(schema: ZodSchema<T>, data: unknown): T {
+  const result = schema.safeParse(data)
+  if (!result.success) {
+    throw new ValidationError('Invalid request data', result.error.message)
+  }
+  return result.data
 } 

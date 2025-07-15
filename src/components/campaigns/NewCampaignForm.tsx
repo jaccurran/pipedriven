@@ -20,11 +20,11 @@ interface CampaignFormData {
 
 export function NewCampaignForm({ user }: NewCampaignFormProps) {
   const router = useRouter()
-  const [isSubmitting, setIsSubmitting] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
 
+
   const handleSubmit = async (data: CampaignFormData) => {
-    setIsSubmitting(true)
     setError(null)
 
     try {
@@ -45,8 +45,6 @@ export function NewCampaignForm({ user }: NewCampaignFormProps) {
       router.push(`/campaigns/${result.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-    } finally {
-      setIsSubmitting(false)
     }
   }
 

@@ -15,7 +15,7 @@ export const My500QuerySchema = z.object({
 export type ValidatedMy500Query = z.infer<typeof My500QuerySchema>
 
 // Validation functions
-export function validateMy500Query(params: Record<string, any>): { 
+export function validateMy500Query(params: Record<string, unknown>): { 
   success: true; data: ValidatedMy500Query } | { 
   success: false; errors: ValidationError[] 
 } {

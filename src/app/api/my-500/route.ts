@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getServerSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createApiError, createApiSuccess } from '@/lib/errors/apiErrors'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,37 +17,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const page = Math.max(Number(searchParams.get('page')) || 1, 1)
     const limit = Math.max(Math.min(Number(searchParams.get('limit')) || 50, 100), 1)
-    const search = searchParams.get('search')?.toLowerCase() || ''
+    // const search = searchParams.get('search')?.toLowerCase() || ''
 
     // 3. Query contacts with optimized database-level ordering
-    let where: any = { userId }
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { organization: { name: { contains: search, mode: 'insensitive' } } },
-      ]
-    }
+    const where: Prisma.ContactWhereInput = {
+      userId: userId,
+      // Add any additional filters here
+    };
 
     const [total, contacts] = await Promise.all([
       prisma.contact.count({ where }),
       prisma.contact.findMany({
         where,
-        include: { 
-          activities: {
-            orderBy: { createdAt: 'desc' },
-            take: 5
-          },
-          organization: true 
+        include: {
+          campaigns: true,
         },
-        orderBy: [
-          { addedToCampaign: 'desc' },
-          { warmnessScore: 'asc' },
-          { lastContacted: 'asc' },
-          { createdAt: 'desc' },
-        ],
-        skip: (page - 1) * limit,
-        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
       })
     ])
 
@@ -71,13 +59,28 @@ export async function GET(request: NextRequest) {
       hasPrev: page > 1,
     }
 
+    const result = contacts.map((contact: Prisma.ContactGetPayload<{
+      include: { campaigns: true }
+    }>) => ({
+      id: contact.id,
+      name: contact.name,
+      email: contact.email,
+      organization: contact.organisation,
+      addedToCampaign: contact.addedToCampaign,
+      warmnessScore: contact.warmnessScore,
+      createdAt: contact.createdAt,
+      updatedAt: contact.updatedAt,
+      campaigns: contact.campaigns,
+    }));
+
     return createApiSuccess({
-      contacts,
+      contacts: result,
       pagination,
       syncStatus,
       filters: { available: [], applied: [] },
     })
-  } catch (error: any) {
-    return createApiError(error.message || 'Internal server error', 500)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    return createApiError(errorMessage, 500)
   }
 } 

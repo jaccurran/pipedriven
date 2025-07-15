@@ -5,10 +5,26 @@ import { Contact, Campaign, User } from '@prisma/client'
 import { ContactCard } from '@/components/contacts/ContactCard'
 import { ContactForm } from '@/components/contacts/ContactForm'
 import { AddContactModal } from '@/components/campaigns/AddContactModal'
-import { Button, Input } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { Modal } from '@/components/ui/Modal'
 import { QuickActionToggle } from '@/components/ui/QuickActionToggle'
 import { cn } from '@/lib/utils'
+
+// Type definitions for contact selection
+interface PipedriveContact {
+  id: number
+  name: string
+  email: string[]
+  phone: string[]
+  org_name?: string
+  source: 'pipedrive'
+}
+
+interface LocalContact extends Contact {
+  source?: 'local'
+}
+
+type SelectableContact = LocalContact | PipedriveContact
 
 interface CampaignContactListProps {
   contacts: Contact[]
@@ -22,7 +38,6 @@ interface CampaignContactListProps {
 export function CampaignContactList({
   contacts,
   campaign,
-  user,
   isLoading = false,
   className,
   onContactsUpdate,
@@ -34,9 +49,17 @@ export function CampaignContactList({
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [availableContacts, setAvailableContacts] = useState<Contact[]>([])
-  const [pipedriveContacts, setPipedriveContacts] = useState<any[]>([])
+  const [pipedriveContacts, setPipedriveContacts] = useState<Array<{
+    id: number;
+    name: string;
+    email: string[];
+    phone: string[];
+    org_name?: string;
+    source: string;
+  }>>([])
   const [loadingPipedrive, setLoadingPipedrive] = useState(false)
   const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
+
   
   // Use ref to avoid dependency issues
   const contactsRef = useRef(contacts)
@@ -44,13 +67,6 @@ export function CampaignContactList({
 
   // Sort contacts by warmness score (highest first)
   const sortedContacts = [...contacts].sort((a, b) => b.warmnessScore - a.warmnessScore)
-
-  // Fetch available contacts when modal opens
-  useEffect(() => {
-    if (showAddContactModal) {
-      fetchAvailableContacts()
-    }
-  }, [showAddContactModal])
 
   const fetchAvailableContacts = useCallback(async () => {
     try {
@@ -68,6 +84,13 @@ export function CampaignContactList({
     }
   }, []) // Remove contacts dependency
 
+  // Fetch available contacts when modal opens
+  useEffect(() => {
+    if (showAddContactModal) {
+      fetchAvailableContacts()
+    }
+  }, [showAddContactModal, fetchAvailableContacts])
+
   const handleSearchPipedrive = useCallback(async (query: string) => {
     setLoadingPipedrive(true)
     try {
@@ -82,7 +105,13 @@ export function CampaignContactList({
       if (response.ok) {
         const data = await response.json()
         // Add source property to Pipedrive contacts
-        const pipedriveContactsWithSource = (data.results || []).map((contact: any) => ({
+        const pipedriveContactsWithSource = (data.results || []).map((contact: {
+          id: number;
+          name: string;
+          email: string[];
+          phone: string[];
+          org_name?: string;
+        }) => ({
           ...contact,
           source: 'pipedrive'
         }))
@@ -137,7 +166,7 @@ export function CampaignContactList({
     }
   }, [campaign.id, onContactsUpdate])
 
-  const handleSelectContact = useCallback(async (contact: any) => {
+  const handleContactSelect = useCallback(async (contact: SelectableContact) => {
     setIsLoadingAction(true)
     try {
       console.log('Selected contact:', contact)
@@ -183,11 +212,16 @@ export function CampaignContactList({
     }
   }, [addContactToCampaign])
 
-  const handleCreateContact = useCallback(async (searchQuery: string) => {
+  const handleCreateContact = useCallback(async () => {
     setShowCreateContactModal(true)
   }, [])
 
-  const handleCreateContactSubmit = useCallback(async (formData: any) => {
+  const handleCreateContactSubmit = useCallback(async (formData: {
+    name: string;
+    email: string;
+    phone?: string;
+    organisation?: string;
+  }) => {
     setIsCreatingContact(true)
     try {
       const response = await fetch('/api/contacts', {
@@ -199,7 +233,7 @@ export function CampaignContactList({
       })
 
       if (response.ok) {
-        const newContact = await response.json()
+        await response.json()
         setShowCreateContactModal(false)
         // Refresh available contacts
         await fetchAvailableContacts()
@@ -216,7 +250,7 @@ export function CampaignContactList({
 
 
 
-  const handleRemoveContact = useCallback(async (contact: Contact) => {
+  const handleContactRemove = useCallback(async (contactId: string) => {
     setIsLoadingAction(true)
     try {
       const response = await fetch(`/api/campaigns/${campaign.id}/assign-contacts`, {
@@ -224,7 +258,7 @@ export function CampaignContactList({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ contactIds: [contact.id] }),
+        body: JSON.stringify({ contactIds: [contactId] }),
       })
 
       if (response.ok) {
@@ -245,7 +279,7 @@ export function CampaignContactList({
   const handleActivity = useCallback(async (contactId: string, actionType: string) => {
     // For test integration - expose mode globally
     if (typeof window !== 'undefined') {
-      (window as any).__quickActionMode = quickActionMode
+      (window as unknown as Record<string, unknown>).__quickActionMode = quickActionMode
     }
 
     if (quickActionMode === 'SIMPLE') {
@@ -303,12 +337,64 @@ export function CampaignContactList({
         setIsLoadingAction(false)
       }
     } else {
-      // Detailed mode: show modal (for now, just set a flag for testing)
-      if (typeof window !== 'undefined') {
-        (window as any).__modalShown = true
+      // Detailed mode: For now, use the same direct logging but with a more detailed note
+      // TODO: Implement proper detailed action forms using existing components
+      setIsLoadingAction(true)
+      try {
+        // Map action types to activity types
+        const activityTypeMap: Record<string, string> = {
+          'EMAIL': 'EMAIL',
+          'MEETING_REQUEST': 'MEETING',
+          'MEETING': 'MEETING',
+          'LINKEDIN': 'LINKEDIN',
+          'PHONE_CALL': 'CALL',
+          'CONFERENCE': 'CONFERENCE'
+        }
+
+        const activityType = activityTypeMap[actionType] || 'EMAIL'
+        
+        // Create activity via API with detailed note
+        const response = await fetch('/api/activities', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: activityType,
+            contactId: contactId,
+            campaignId: campaign.id,
+            note: `Detailed activity logged: ${actionType} - User selected detailed mode for this action`,
+          }),
+        })
+
+        if (response.ok) {
+          // Show success message
+          const successMessage = `Detailed activity "${actionType}" logged successfully for contact`
+          setSuccessMessage(successMessage)
+          setShowSuccessMessage(true)
+          
+          // Hide success message after 3 seconds
+          setTimeout(() => {
+            setShowSuccessMessage(false)
+            setSuccessMessage('')
+          }, 3000)
+          
+          // Refresh contacts to show updated lastContacted
+          if (onContactsUpdate) {
+            onContactsUpdate()
+          }
+        } else {
+          console.error('Failed to log activity:', await response.text())
+        }
+      } catch (error) {
+        console.error('Failed to log activity:', error)
+      } finally {
+        setIsLoadingAction(false)
       }
     }
   }, [campaign.id, onContactsUpdate, quickActionMode])
+
+
 
   const handleEditContact = useCallback(async (contact: Contact) => {
     setIsLoadingAction(true)
@@ -388,7 +474,7 @@ export function CampaignContactList({
               key={contact.id}
               contact={contact}
               onEdit={handleEditContact}
-              onDelete={() => handleRemoveContact(contact)}
+              onDelete={() => handleContactRemove(contact.id)}
               onActivity={(contactId, actionType) => handleActivity(contactId, actionType)}
               className="border border-gray-200 rounded-lg p-4"
             />
@@ -400,11 +486,31 @@ export function CampaignContactList({
       <AddContactModal
         isOpen={showAddContactModal}
         onClose={handleCloseAddContactModal}
-        onSelect={handleSelectContact}
+        onSelect={(contact) => handleContactSelect(contact as SelectableContact)}
         onCreate={handleCreateContact}
         onSearchPipedrive={handleSearchPipedrive}
-        localContacts={availableContacts}
-        pipedriveContacts={pipedriveContacts}
+        localContacts={availableContacts.map(contact => ({
+          id: contact.id,
+          name: contact.name,
+          email: contact.email || undefined,
+          organization: contact.organisation || undefined,
+          jobTitle: undefined,
+          phone: contact.phone || undefined,
+          warmnessScore: contact.warmnessScore,
+          source: 'local' as const,
+          pipedrivePersonId: contact.pipedrivePersonId || undefined,
+        }))}
+        pipedriveContacts={pipedriveContacts.map(contact => ({
+          id: contact.id,
+          name: contact.name,
+          email: contact.email?.[0] || undefined,
+          organization: contact.org_name || undefined,
+          jobTitle: undefined,
+          phone: contact.phone?.[0] || undefined,
+          warmnessScore: undefined,
+          source: 'pipedrive' as const,
+          pipedrivePersonId: contact.id.toString(),
+        }))}
         loadingPipedrive={loadingPipedrive}
       />
 
@@ -424,6 +530,8 @@ export function CampaignContactList({
           mode="create"
         />
       </Modal>
+
+
 
       {/* Success Message Toast */}
       {showSuccessMessage && (

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { Campaign, User } from '@prisma/client'
-import { Card, Badge, Button } from '@/components/ui'
+import { Badge } from '@/components/ui'
 import { CampaignCard } from './CampaignCard'
 import { cn } from '@/lib/utils'
 
@@ -56,7 +56,6 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
 
 export function CampaignKanban({
   campaigns,
-  user,
   onStatusChange,
   onEdit,
   onDelete,
@@ -76,8 +75,8 @@ export function CampaignKanban({
         campaign.description?.toLowerCase().includes(searchTerm.toLowerCase())
       
       const matchesDateRange = 
-        (!startDate || new Date(campaign.startDate) >= new Date(startDate)) &&
-        (!endDate || new Date(campaign.endDate) <= new Date(endDate))
+        (!startDate || (campaign.startDate && new Date(campaign.startDate) >= new Date(startDate))) &&
+        (!endDate || (campaign.endDate && new Date(campaign.endDate) <= new Date(endDate)))
       
       return matchesSearch && matchesDateRange
     })
@@ -94,24 +93,6 @@ export function CampaignKanban({
     
     return grouped
   }, [filteredCampaigns])
-
-  // Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount)
-  }
-
-  // Format date
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date(date))
-  }
 
   // Handle drag start
   const handleDragStart = useCallback((e: React.DragEvent, campaignId: string) => {
@@ -179,7 +160,6 @@ export function CampaignKanban({
         data-testid="kanban-column"
         onDrop={(e) => handleDrop(e, column.status)}
         onDragOver={handleDragOver}
-        aria-droppable="true"
         aria-label={`${column.title} column. Drop campaigns here to change status to ${column.title}.`}
       >
         {/* Column Header */}

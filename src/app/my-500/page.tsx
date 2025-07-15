@@ -21,6 +21,8 @@ export default async function My500PageServer() {
       role: true,
       pipedriveApiKey: true,
       lastSyncTimestamp: true,
+      syncStatus: true,
+      password: true,
       createdAt: true,
       updatedAt: true,
       emailVerified: true,

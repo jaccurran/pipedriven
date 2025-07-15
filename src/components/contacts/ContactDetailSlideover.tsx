@@ -38,7 +38,6 @@ export function ContactDetailSlideover({
   isOpen,
   contact,
   activities,
-  user,
   onClose,
   onEdit,
   onActivityCreate,

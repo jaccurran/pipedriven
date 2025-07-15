@@ -59,7 +59,7 @@ async function fetchMy500Contacts(params: SearchParams = {}): Promise<My500Respo
 }
 
 // Sync contacts with Pipedrive
-async function syncContacts(syncData: { syncType: 'FULL' | 'INCREMENTAL'; sinceTimestamp?: string }): Promise<any> {
+async function syncContacts(syncData: { syncType: 'FULL' | 'INCREMENTAL'; sinceTimestamp?: string }): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
   const response = await fetch('/api/pipedrive/contacts/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -92,7 +92,7 @@ export function useSyncContacts() {
   
   return useMutation({
     mutationFn: syncContacts,
-    onSuccess: (data) => {
+    onSuccess: () => {
       // Invalidate all contact queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['my500', 'contacts'] })
       

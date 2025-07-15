@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, Badge, Button, Select, DatePicker, LazyLoad } from '@/components/ui'
 import type { SelectOption } from '@/components/ui/Select'
@@ -60,11 +60,7 @@ export function AnalyticsDashboard({ userId, className = '' }: AnalyticsDashboar
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null)
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null)
 
-  useEffect(() => {
-    fetchAnalytics()
-  }, [userId, period, customStartDate, customEndDate])
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -82,7 +78,11 @@ export function AnalyticsDashboard({ userId, className = '' }: AnalyticsDashboar
     } finally {
       setLoading(false)
     }
-  }
+  }, [userId, period, customStartDate, customEndDate])
+
+  useEffect(() => {
+    fetchAnalytics()
+  }, [fetchAnalytics])
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat().format(num)

@@ -2,9 +2,8 @@ import { NextRequest } from 'next/server'
 import { getServerSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createApiError, createApiSuccess } from '@/lib/errors/apiErrors'
+import { Prisma } from '@prisma/client'
 
-const DEFAULT_PAGE = 1
-const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
 
 export async function GET(request: NextRequest) {
@@ -18,8 +17,8 @@ export async function GET(request: NextRequest) {
 
     // Parse query params
     const { searchParams } = new URL(request.url)
-    let page = parseInt(searchParams.get('page') || `${DEFAULT_PAGE}`)
-    let limit = parseInt(searchParams.get('limit') || `${DEFAULT_LIMIT}`)
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
     const q = searchParams.get('q') || ''
     const filter = searchParams.get('filter') || ''
     const sort = searchParams.get('sort') || 'warmnessScore'
@@ -30,12 +29,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Build Prisma query
-    const where: any = { userId }
+    const where: Prisma.ContactWhereInput = { userId }
     if (q) {
       where.OR = [
         { name: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
-        { organization: { name: { contains: q, mode: 'insensitive' } } },
+        { organisation: { contains: q, mode: 'insensitive' } },
       ]
     }
     if (filter === 'campaign') {
@@ -43,8 +42,8 @@ export async function GET(request: NextRequest) {
     }
     // Add more filters as needed
 
-    const orderBy: any = {}
-    orderBy[sort] = order
+    const orderBy: Prisma.ContactOrderByWithRelationInput = {}
+    orderBy[sort as keyof Prisma.ContactOrderByWithRelationInput] = order
 
     // Count total
     const total = await prisma.contact.count({ where })
@@ -52,17 +51,29 @@ export async function GET(request: NextRequest) {
     // Query contacts
     const contacts = await prisma.contact.findMany({
       where,
-      orderBy,
+      include: {
+        campaigns: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
       skip: (page - 1) * limit,
       take: limit,
-      include: { 
-        activities: {
-          orderBy: { createdAt: 'desc' },
-          take: 5
-        },
-        organization: true 
-      },
-    })
+    });
+
+    const result = contacts.map((contact: Prisma.ContactGetPayload<{
+      include: { campaigns: true }
+    }>) => ({
+      id: contact.id,
+      name: contact.name,
+      email: contact.email,
+      organization: contact.organisation,
+      addedToCampaign: contact.addedToCampaign,
+      warmnessScore: contact.warmnessScore,
+      createdAt: contact.createdAt,
+      updatedAt: contact.updatedAt,
+      campaigns: contact.campaigns,
+    }));
 
     // Pagination info
     const totalPages = Math.ceil(total / limit)
@@ -76,7 +87,7 @@ export async function GET(request: NextRequest) {
     }
 
     return createApiSuccess({
-      contacts,
+      contacts: result,
       pagination: {
         page,
         limit,
@@ -87,7 +98,8 @@ export async function GET(request: NextRequest) {
       },
       searchStats,
     })
-  } catch (err: any) {
-    return createApiError(err.message || 'Server error', 500)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    return createApiError(errorMessage, 500)
   }
 } 

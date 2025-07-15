@@ -1,8 +1,8 @@
 import { prisma } from '@/lib/prisma'
-import type { User, Contact, Activity, ActivityType } from '@prisma/client'
+import type { Contact, Activity, ActivityType } from '@prisma/client'
 import { pipedriveConfig, getPipedriveApiUrl, validatePipedriveConfig } from '@/lib/pipedrive-config'
 
-interface PipedrivePerson {
+export interface PipedrivePerson {
   id: number
   name: string
   email: string[]
@@ -13,6 +13,9 @@ interface PipedrivePerson {
   updated: string
 }
 
+// Alias for backward compatibility
+export type PipedriveContact = PipedrivePerson
+
 interface PipedriveOrganization {
   id: number
   name: string
@@ -21,19 +24,7 @@ interface PipedriveOrganization {
   updated: string
 }
 
-interface PipedriveActivity {
-  id: number
-  subject: string
-  type: string
-  due_date?: string
-  due_time?: string
-  duration?: string
-  note?: string
-  person_id?: number
-  org_id?: number
-  created: string
-  updated: string
-}
+
 
 interface PipedriveUser {
   id: number
@@ -94,7 +85,7 @@ export class PipedriveService {
     if (result.success) {
       return {
         success: true,
-        user: result.data?.data,
+        user: result.data?.data as PipedriveUser | undefined,
         diagnostics: {
           responseTime: `${responseTime}ms`,
           timestamp: new Date().toISOString(),
@@ -148,7 +139,7 @@ export class PipedriveService {
         }
       }
 
-      const personId = result.data?.data?.id
+      const personId = (result.data?.data as { id: number } | undefined)?.id
       if (!personId) {
         console.error('Pipedrive API returned no person ID')
         return {
@@ -211,7 +202,7 @@ export class PipedriveService {
 
       return {
         success: true,
-        personId: result.data?.data?.id,
+        personId: (result.data?.data as { id: number } | undefined)?.id,
       }
     } catch (error) {
       console.error('Pipedrive API error:', error)
@@ -263,7 +254,7 @@ export class PipedriveService {
 
       return {
         success: true,
-        activityId: result.data?.data?.id,
+        activityId: (result.data?.data as { id: number } | undefined)?.id,
       }
     } catch (error) {
       console.error('Pipedrive API error:', error)
@@ -293,7 +284,7 @@ export class PipedriveService {
 
       return {
         success: true,
-        persons: result.data?.data,
+        persons: result.data?.data as PipedrivePerson[] | undefined,
       }
     } catch (error) {
       console.error('Pipedrive API error:', error)
@@ -323,7 +314,7 @@ export class PipedriveService {
 
       return {
         success: true,
-        organizations: result.data?.data,
+        organizations: result.data?.data as PipedriveOrganization[] | undefined,
       }
     } catch (error) {
       console.error('Pipedrive API error:', error)
@@ -352,16 +343,19 @@ export class PipedriveService {
         }
       }
 
-      const organizations = result.data?.data?.items || []
+      const organizations = (result.data?.data as { items?: unknown[] } | undefined)?.items || []
       
       // Transform the search results to match our PipedriveOrganization interface
-      const transformedOrganizations = organizations.map((item: any) => ({
-        id: item.item?.id || item.id,
-        name: item.item?.name || item.name,
-        address: item.item?.address || item.address,
-        created: item.item?.created || item.created,
-        updated: item.item?.updated || item.updated,
-      }))
+      const transformedOrganizations = organizations.map((item: unknown) => {
+        const typedItem = item as { item?: PipedriveOrganization; id?: number; name?: string; address?: string; created?: string; updated?: string }
+                return {
+          id: typedItem.item?.id || typedItem.id || 0,
+          name: typedItem.item?.name || typedItem.name || '',
+          address: typedItem.item?.address || typedItem.address,
+          created: typedItem.item?.created || typedItem.created || '',
+          updated: typedItem.item?.updated || typedItem.updated || '',
+        }
+      })
 
       return {
         success: true,
@@ -393,19 +387,22 @@ export class PipedriveService {
         return []
       }
 
-      const persons = nameResult.data?.data?.items || []
+      const persons = (nameResult.data?.data as { items?: unknown[] } | undefined)?.items || []
       
       // Transform the search results to match our PipedrivePerson interface
-      return persons.map((item: PipedrivePerson) => ({
-        id: item.item.id,
-        name: item.item.name,
-        email: item.item.email || [],
-        phone: item.item.phone || [],
-        org_name: item.item.org_name,
-        org_id: item.item.org_id,
-        created: item.item.created,
-        updated: item.item.updated,
-      }))
+      return persons.map((item: unknown) => {
+        const typedItem = item as { item?: PipedrivePerson; id?: number; name?: string; email?: string[]; phone?: string[]; org_name?: string; org_id?: number; created?: string; updated?: string }
+        return {
+          id: typedItem.item?.id || typedItem.id || 0,
+          name: typedItem.item?.name || typedItem.name || '',
+          email: typedItem.item?.email || typedItem.email || [],
+          phone: typedItem.item?.phone || typedItem.phone || [],
+          org_name: typedItem.item?.org_name || typedItem.org_name,
+          org_id: typedItem.item?.org_id || typedItem.org_id,
+          created: typedItem.item?.created || typedItem.created || '',
+          updated: typedItem.item?.updated || typedItem.updated || '',
+        }
+      })
     } catch (error) {
       console.error('Pipedrive search error:', error)
       return []

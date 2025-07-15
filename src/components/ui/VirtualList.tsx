@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
+import React, { useState, useRef, useCallback, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 export interface VirtualListProps<T> {
@@ -54,25 +54,7 @@ function VirtualList<T>({
     }
   }, [onScroll, onEndReached, containerHeight, totalHeight, endReachedThreshold])
 
-  // Scroll to specific item
-  const scrollToItem = useCallback((index: number) => {
-    if (containerRef.current) {
-      const targetScrollTop = index * itemHeight
-      containerRef.current.scrollTop = targetScrollTop
-    }
-  }, [itemHeight])
 
-  // Scroll to top
-  const scrollToTop = useCallback(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = 0
-    }
-  }, [])
-
-  // Get item index at scroll position
-  const getItemIndexAtPosition = useCallback((scrollTop: number) => {
-    return Math.floor(scrollTop / itemHeight)
-  }, [itemHeight])
 
   return (
     <div
@@ -113,6 +95,7 @@ function VirtualList<T>({
                   height: itemHeight,
                 }}
                 role="option"
+                aria-selected="false"
               >
                 {renderItem(item, actualIndex)}
               </div>

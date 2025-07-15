@@ -20,7 +20,7 @@ const createNextApiMiddleware = (handler: ApiHandler) => {
       method: req.method,
       url: req.url,
       headers: req.headers,
-    } as NextApiRequest
+    } as unknown as NextApiRequest
 
     // Convert Express response to NextApiResponse format
     const nextRes = {
@@ -29,11 +29,11 @@ const createNextApiMiddleware = (handler: ApiHandler) => {
         res.status(code)
         return nextRes
       },
-      json: (data: any) => {
+      json: (data: unknown) => {
         res.json(data)
         return nextRes
       },
-      send: (data: any) => {
+      send: (data: unknown) => {
         res.send(data)
         return nextRes
       },
@@ -45,7 +45,7 @@ const createNextApiMiddleware = (handler: ApiHandler) => {
         res.setHeader(name, value)
         return nextRes
       },
-    } as NextApiResponse
+    } as unknown as NextApiResponse
 
     try {
       await handler(nextReq, nextRes)
@@ -67,7 +67,7 @@ const createAppRouteMiddleware = (handler: AppRouteHandler) => {
       
       const nextReq = new NextRequest(absoluteUrl, {
         method: req.method,
-        headers: req.headers as any,
+        headers: req.headers as Record<string, string>,
         body: req.body ? JSON.stringify(req.body) : undefined,
       })
 
@@ -105,12 +105,12 @@ export function createTestApp() {
   app.use(express.urlencoded({ extended: true }))
 
   // Helper to mount Pages Router API handlers
-  app.mountApiRoute = (path: string, handler: ApiHandler) => {
+  ;(app as unknown as { mountApiRoute: (path: string, handler: ApiHandler) => void }).mountApiRoute = (path: string, handler: ApiHandler) => {
     app.all(path, createNextApiMiddleware(handler))
   }
 
   // Helper to mount App Router API handlers
-  app.mountAppRoute = (path: string, handler: AppRouteHandler) => {
+  ;(app as unknown as { mountAppRoute: (path: string, handler: AppRouteHandler) => void }).mountAppRoute = (path: string, handler: AppRouteHandler) => {
     app.all(path, createAppRouteMiddleware(handler))
   }
 

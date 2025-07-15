@@ -114,15 +114,16 @@ export function ContactSearch({
 
   // Check if contact is already imported
   const isContactImported = useCallback((contact: Contact | PipedriveContact) => {
-    if ('pipedrivePersonId' in contact) {
+    if ('pipedrivePersonId' in contact && contact.pipedrivePersonId) {
       // Pipedrive contact
       return existingContacts.some(existing => 
         existing.pipedrivePersonId === contact.pipedrivePersonId
       )
     } else {
       // Local contact - check by email
+      const localContact = contact as Contact
       return existingContacts.some(existing => 
-        existing.email === contact.email
+        existing.email === localContact.email
       )
     }
   }, [existingContacts])

@@ -28,7 +28,7 @@ export async function POST(
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
@@ -56,14 +56,10 @@ export async function POST(
     }
 
     return NextResponse.json(contact)
-  } catch (error) {
-    console.error('Error in POST /api/contacts/[id]/assign-campaigns:', error)
+  } catch {
+    console.error('Error in POST /api/contacts/[id]/assign-campaigns')
     
     // Handle specific error cases
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
-    }
-    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

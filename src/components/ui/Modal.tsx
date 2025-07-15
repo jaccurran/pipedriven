@@ -29,8 +29,7 @@ const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
       closeOnEscape = true,
       showCloseButton = true,
       ...props
-    },
-    ref
+    }
   ) => {
     const modalRef = useRef<HTMLDivElement>(null)
     const previousFocusRef = useRef<HTMLElement | null>(null)

@@ -76,7 +76,8 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
     if (!open) return
     const menuItems = menuRef.current?.querySelectorAll('[role="menuitem"]')
     if (!menuItems) return
-    menuItems[focusedIndex]?.focus()
+    const focusedItem = menuItems[focusedIndex] as HTMLElement
+    focusedItem?.focus()
   }, [open, focusedIndex])
 
   const handleButtonKeyDown = (e: React.KeyboardEvent) => {

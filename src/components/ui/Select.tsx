@@ -37,13 +37,11 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
       required = false,
       disabled = false,
       searchable = false,
-      multiSelect = false,
       className,
       id,
       name,
       ...props
-    },
-    ref
+    }
   ) => {
     const [isOpen, setIsOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
@@ -51,7 +49,8 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
     const selectRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
 
-    const selectId = id || name || `select-${React.useId()}`
+    const reactId = React.useId()
+    const selectId = id || name || `select-${reactId}`
     const errorId = `${selectId}-error`
 
     // Filter options based on search term

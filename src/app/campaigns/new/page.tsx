@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { CampaignForm } from '@/components/campaigns/CampaignForm'
 import { NewCampaignForm } from '@/components/campaigns/NewCampaignForm'
 
 export default async function NewCampaignPage() {
@@ -25,6 +24,8 @@ export default async function NewCampaignPage() {
       updatedAt: true,
       emailVerified: true,
       image: true,
+      lastSyncTimestamp: true,
+      syncStatus: true,
     },
   })
 

@@ -6,9 +6,53 @@
 
 Our testing journey revealed several critical mistakes that wasted significant time. This document captures the hard-won lessons to prevent future failures.
 
+### 🆕 Critical Timeout Prevention Lessons
+
+#### 1. Network Call Prevention
+- **Always mock `global.fetch`**: Real network calls are the #1 cause of test timeouts
+- **Mock at the top level**: Set up fetch mocks before any component rendering
+- **Verify mock is used**: Add logging to confirm mocks are intercepting calls
+- **Complete mock responses**: Provide realistic response structures to prevent hanging
+
+#### 2. Component Mock Accuracy
+- **Study real components first**: Never create mocks without examining the actual component
+- **Match interfaces exactly**: Props, callbacks, and behavior must match real components
+- **Test mock behavior**: Verify mocks work as expected before testing the main component
+- **Update mocks when components change**: Keep mocks in sync with component evolution
+
+#### 3. Test Environment Issues
+- **Multiple renders**: React StrictMode can cause components to render multiple times
+- **Query ambiguity**: Multiple elements with same test ID cause "Found multiple elements" errors
+- **Async operation hanging**: When mocks don't resolve, tests wait indefinitely
+- **Mock interference**: Conflicting mock setups between tests cause unpredictable behavior
+
+#### 4. Performance Optimization
+- **From 42+ seconds to 1.17 seconds**: Proper mocking and query strategy dramatically improves test performance
+- **Isolation is key**: Each test must be completely independent
+- **Clean state**: Always reset mocks and cleanup DOM between tests
+- **Realistic data**: Complete test data prevents unexpected component behavior
+
 ---
 
 ### 🆕 Lessons Learned from UI Component (Button) Testing
+
+#### 1. Test Timeout Prevention
+- **Mock all network calls**: Always mock `fetch` globally to prevent real API calls
+- **Component interface accuracy**: Mock components must match real component props exactly
+- **Async operation handling**: Use `waitFor()` for async operations and ensure mocks resolve properly
+- **Test isolation**: Use `vi.resetAllMocks()` and `afterEach(cleanup)` for clean test state
+
+#### 2. Component Mocking Best Practices
+- **Study the real component first**: Always examine the actual component before creating mocks
+- **Match prop interfaces exactly**: Ensure mock components accept the same props as real components
+- **Implement realistic behavior**: Mock components should behave like real components (e.g., callbacks, state changes)
+- **Use inline mock factories**: Never reference external variables in `vi.mock()` due to hoisting
+
+#### 3. Query Strategy for Complex Components
+- **Use `within()` for repeated elements**: When components render multiple instances, scope queries
+- **Avoid ambiguous queries**: Never use `getByTestId()` when multiple elements exist with same ID
+- **Component structure awareness**: Understand how components nest and render to create accurate queries
+- **Test ID strategy**: Use unique, descriptive test IDs that reflect component hierarchy
 
 #### 1. Tailwind Utility Class Assertions
 - **Use the correct class expectation:**
@@ -51,6 +95,30 @@ Our testing journey revealed several critical mistakes that wasted significant t
 ---
 
 ### 🆕 Lessons Learned from Multiple Elements Query Issues
+
+#### 1. Test Timeout Root Causes
+- **Real API calls in tests**: When `fetch` is not properly mocked, tests make real network requests that can timeout
+- **Multiple component renders**: React StrictMode or test environment can render components multiple times, causing duplicate elements
+- **Async operations not resolving**: When mocks don't match component expectations, async operations hang indefinitely
+- **Mock interference**: Conflicting mock setups between tests can cause unpredictable behavior
+
+#### 2. Critical Mock Strategy Lessons
+- **Mock at the top level**: All `vi.mock()` calls must be at the top of the file (Vitest hoisting requirement)
+- **Use inline mock factories**: Never reference top-level variables in `vi.mock()` factories due to hoisting
+- **Mock the actual interface**: Ensure mock components match the real component's props and behavior exactly
+- **Global fetch mocking**: Always mock `global.fetch` to prevent real network calls
+
+#### 3. Query Ambiguity Solutions
+- **Use `within()` for repeated elements**: When multiple instances exist, scope queries to specific containers
+- **Avoid index-based selection**: Never use `getAllByTestId()[0]` - use `within()` instead
+- **Test ID uniqueness**: Ensure test IDs are unique within the test scope
+- **Component structure awareness**: Understand how the real component renders to create accurate mocks
+
+#### 4. Test Performance Optimization
+- **Mock all dependencies**: Don't let any real network calls or database operations occur in tests
+- **Use `vi.resetAllMocks()`**: More reliable than `vi.clearAllMocks()` for test isolation
+- **Proper cleanup**: Always use `afterEach(cleanup)` to prevent DOM/test state leaks
+- **Realistic test data**: Use complete data structures to avoid unexpected component behavior
 
 #### 1. Handling Multiple Elements with the Same Label or Role
 - **Always use unique labels within a form:**
@@ -842,6 +910,37 @@ describe("Registration State Management", () => {
 ```
 
 ## 🔍 Debugging Test Failures
+
+### 🆕 Debugging Test Timeouts - Real Example
+
+#### Problem: Tests timing out after 10+ seconds
+**Symptoms:**
+- Tests run for 40+ seconds then timeout
+- Console shows real database queries and API calls
+- No mock interception logs
+- "Found multiple elements" errors
+
+**Root Cause Analysis:**
+1. **Real network calls**: `fetch` was not properly mocked, causing real API calls
+2. **Multiple component renders**: React StrictMode rendered components multiple times
+3. **Query ambiguity**: Multiple elements with same test ID caused selection failures
+4. **Mock interface mismatch**: Mock components didn't match real component interfaces
+
+**Debugging Steps:**
+1. **Add mock verification logs**: `console.log('🟢 MOCK fetch called with:', ...args)`
+2. **Check for real API calls**: Look for database queries in console output
+3. **Verify mock setup**: Ensure mocks are defined before component rendering
+4. **Test mock isolation**: Run individual tests to isolate issues
+
+**Solution Applied:**
+1. **Proper fetch mocking**: `global.fetch = vi.fn()` at top level
+2. **Component interface matching**: Updated mocks to match real component props
+3. **Query scoping**: Used `within()` for repeated elements
+4. **Test isolation**: Added `afterEach(cleanup)` and `vi.resetAllMocks()`
+
+**Result:**
+- **Before**: 42+ seconds, timeouts, real API calls
+- **After**: 1.17 seconds, all tests passing, proper mocking
 
 ### 1. Mock Call Logging
 ```typescript

@@ -22,7 +22,7 @@ export async function POST(
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
@@ -30,9 +30,9 @@ export async function POST(
     let validatedData
     try {
       validatedData = assignContactsSchema.parse(body)
-    } catch (error) {
-      console.error('Validation error in POST /api/campaigns/[id]/assign-contacts:', error)
-      return NextResponse.json({ error: 'Validation failed', details: error }, { status: 400 })
+    } catch {
+      console.error('Validation error in POST /api/campaigns/[id]/assign-contacts')
+      return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
     }
 
     const { id: campaignId } = await params
@@ -66,8 +66,8 @@ export async function POST(
     })
 
     return NextResponse.json(result, { status: 200 })
-  } catch (error) {
-    console.error('Error in POST /api/campaigns/[id]/assign-contacts:', error)
+  } catch {
+    console.error('Error in POST /api/campaigns/[id]/assign-contacts')
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -87,7 +87,7 @@ export async function DELETE(
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
@@ -95,9 +95,9 @@ export async function DELETE(
     let validatedData
     try {
       validatedData = assignContactsSchema.parse(body)
-    } catch (error) {
-      console.error('Validation error in DELETE /api/campaigns/[id]/assign-contacts:', error)
-      return NextResponse.json({ error: 'Validation failed', details: error }, { status: 400 })
+    } catch {
+      console.error('Validation error in DELETE /api/campaigns/[id]/assign-contacts')
+      return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
     }
 
     const { id: campaignId } = await params
@@ -131,8 +131,8 @@ export async function DELETE(
     })
 
     return NextResponse.json(result, { status: 200 })
-  } catch (error) {
-    console.error('Error in DELETE /api/campaigns/[id]/assign-contacts:', error)
+  } catch {
+    console.error('Error in DELETE /api/campaigns/[id]/assign-contacts')
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server'
+
 import { prisma } from '@/lib/prisma'
 import { createApiError, createApiSuccess } from '@/lib/errors/apiErrors'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Get the first user for testing
     const user = await prisma.user.findFirst()

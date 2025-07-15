@@ -44,7 +44,7 @@ export function MobileNavigation({
   const [isExpanded, setIsExpanded] = useState(false)
 
   // Touch gestures for mobile navigation
-  const { touchState } = useTouchGestures(containerRef, {
+  const { touchState } = useTouchGestures(containerRef as React.RefObject<HTMLElement>, {
     onSwipeUp: () => {
       if (!isExpanded) {
         setIsExpanded(true)
@@ -62,7 +62,7 @@ export function MobileNavigation({
   })
 
   // Focus management for accessibility
-  const focusManagement = useFocusManagement(containerRef, {
+  const focusManagement = useFocusManagement(containerRef as React.RefObject<HTMLElement>, {
     trapFocus: enableFocusTrap && isExpanded,
     restoreFocus: true,
     keyboardShortcuts: {

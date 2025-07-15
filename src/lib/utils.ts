@@ -12,11 +12,11 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Format a date to a readable string
  */
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string | number): string {
   const d = new Date(date)
   return d.toLocaleDateString('en-US', {
     year: 'numeric',
-    month: 'short',
+    month: 'long',
     day: 'numeric',
   })
 }
@@ -66,13 +66,14 @@ export function generateId(): string {
 /**
  * Debounce a function
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout
+  let timeout: NodeJS.Timeout | null = null
+  
   return (...args: Parameters<T>) => {
-    clearTimeout(timeout)
+    if (timeout) clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
   }
 }
@@ -80,11 +81,11 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Check if a value is empty (null, undefined, empty string, empty array, empty object)
  */
-export function isEmpty(value: any): boolean {
+export function isEmpty(value: unknown): boolean {
   if (value === null || value === undefined) return true
   if (typeof value === 'string') return value.trim() === ''
   if (Array.isArray(value)) return value.length === 0
-  if (typeof value === 'object') return Object.keys(value).length === 0
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length === 0
   return false
 }
 
@@ -147,7 +148,7 @@ export function formatNumber(num: number): string {
 /**
  * Format a currency value
  */
-export function formatCurrency(amount: number, currency = 'USD'): string {
+export function formatCurrency(amount: number, currency: string = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import type { ContactWithActivities } from '@/lib/my-500-data'
 import {
@@ -9,7 +9,7 @@ import {
   needsAttention
 } from '@/lib/my-500-data'
 import { ActivityForm } from '@/components/activities/ActivityForm'
-import { Button, Modal } from '@/components/ui'
+import { Modal } from '@/components/ui'
 import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
 import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 
@@ -24,7 +24,7 @@ export function My500Page({ contacts }: My500PageProps) {
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false)
+
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
@@ -72,7 +72,7 @@ export function My500Page({ contacts }: My500PageProps) {
     return diffHours <= 24 // Within last 24 hours
   }
 
-  const handlePrimaryAction = async (contact: ContactWithActivities, type: ActionType) => {
+  const handleContactAction = useCallback(async (contact: ContactWithActivities, action: ActionType) => {
     setSelectedContact(contact)
     // Map ActionType to activity type
     const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
@@ -80,12 +80,11 @@ export function My500Page({ contacts }: My500PageProps) {
       MEETING_REQUEST: 'MEETING',
       MEETING: 'MEETING'
     }
-    setActivityType(activityTypeMap[type])
+    setActivityType(activityTypeMap[action])
     setShowActivityModal(true)
     
     // Fetch campaigns for the user
     if (session?.user?.id && campaigns.length === 0) {
-      setLoadingCampaigns(true)
       try {
         const response = await fetch('/api/campaigns')
         if (response.ok) {
@@ -94,11 +93,9 @@ export function My500Page({ contacts }: My500PageProps) {
         }
       } catch (error) {
         console.error('Failed to fetch campaigns:', error)
-      } finally {
-        setLoadingCampaigns(false)
       }
     }
-  }
+  }, [session?.user?.id, campaigns.length])
 
   const handleSecondaryAction = async (type: SecondaryActionType) => {
     if (!selectedContact) return
@@ -115,7 +112,6 @@ export function My500Page({ contacts }: My500PageProps) {
     
     // Fetch campaigns for the user
     if (session?.user?.id && campaigns.length === 0) {
-      setLoadingCampaigns(true)
       try {
         const response = await fetch('/api/campaigns')
         if (response.ok) {
@@ -124,13 +120,18 @@ export function My500Page({ contacts }: My500PageProps) {
         }
       } catch (error) {
         console.error('Failed to fetch campaigns:', error)
-      } finally {
-        setLoadingCampaigns(false)
       }
     }
   }
 
-  const handleActivitySubmit = async (activityData: any) => {
+  const handleActivitySubmit = async (activityData: {
+    type: string;
+    subject?: string;
+    note?: string;
+    dueDate?: Date;
+    contactId?: string;
+    campaignId?: string;
+  }) => {
     try {
       // Clean the data - convert empty strings to null for optional fields
       const cleanedData = {
@@ -160,7 +161,7 @@ export function My500Page({ contacts }: My500PageProps) {
           errorData = { error: 'Failed to parse error response' }
         }
         
-        throw new Error(`Failed to create activity: ${response.status} ${response.statusText} - ${errorData.details || errorData.error || 'Unknown error'}`)
+        throw new Error(`Failed to create activity: ${response.status} ${response.statusText} - ${(errorData as { details?: string; error?: string }).details || (errorData as { details?: string; error?: string }).error || 'Unknown error'}`)
       }
 
       // Show success message
@@ -257,19 +258,19 @@ export function My500Page({ contacts }: My500PageProps) {
                     {/* Primary Actions - Always visible */}
                     <QuickActionButton
                       type="EMAIL"
-                      onClick={(type) => handlePrimaryAction(contact, type)}
+                      onClick={(type) => handleContactAction(contact, type)}
                       contactName={contact.name}
                       className="text-xs px-2 py-1"
                     />
                     <QuickActionButton
                       type="MEETING_REQUEST"
-                      onClick={(type) => handlePrimaryAction(contact, type)}
+                      onClick={(type) => handleContactAction(contact, type)}
                       contactName={contact.name}
                       className="text-xs px-2 py-1"
                     />
                     <QuickActionButton
                       type="MEETING"
-                      onClick={(type) => handlePrimaryAction(contact, type)}
+                      onClick={(type) => handleContactAction(contact, type)}
                       contactName={contact.name}
                       className="text-xs px-2 py-1"
                     />
@@ -296,7 +297,11 @@ export function My500Page({ contacts }: My500PageProps) {
         {selectedContact && session?.user?.id && (
           <ActivityForm
             userId={session.user.id}
-            contacts={[selectedContact]}
+            contacts={[{
+              id: selectedContact.id,
+              name: selectedContact.name,
+              organisation: selectedContact.organisation || undefined,
+            }]}
             campaigns={campaigns}
             onSubmit={handleActivitySubmit}
             onCancel={handleActivityCancel}

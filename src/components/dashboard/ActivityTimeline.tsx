@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, Badge } from '@/components/ui'
 import type { ActivityType } from '@prisma/client'
 
@@ -97,7 +97,7 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
 
-  const fetchActivities = async (page = 1) => {
+  const fetchActivities = useCallback(async (page = 1) => {
     try {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -129,7 +129,7 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
     } finally {
       setLoading(false)
     }
-  }
+  }, [limit])
 
   const loadMore = () => {
     if (!loading && hasMore) {
@@ -140,7 +140,7 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
 
   useEffect(() => {
     fetchActivities()
-  }, [])
+  }, [fetchActivities])
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-3">

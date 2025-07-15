@@ -37,8 +37,8 @@ export async function GET(
     }
 
     return NextResponse.json(contact)
-  } catch (error) {
-    console.error('Error in GET /api/contacts/[id]:', error)
+  } catch {
+    console.error('Error in GET /api/contacts/[id]')
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -58,7 +58,7 @@ export async function PUT(
     let body
     try {
       body = await request.json()
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
     }
 
@@ -66,7 +66,7 @@ export async function PUT(
     let validatedData
     try {
       validatedData = updateContactSchema.parse(body)
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
     }
 
@@ -84,14 +84,10 @@ export async function PUT(
     const contact = await contactService.updateContact(id, cleanData)
 
     return NextResponse.json(contact)
-  } catch (error) {
-    console.error('Error in PUT /api/contacts/[id]:', error)
+  } catch {
+    console.error('Error in PUT /api/contacts/[id]')
     
     // Handle specific error cases
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
-    }
-    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -113,14 +109,10 @@ export async function DELETE(
     await contactService.deleteContact(id)
 
     return NextResponse.json({ message: 'Contact deleted successfully' })
-  } catch (error) {
-    console.error('Error in DELETE /api/contacts/[id]:', error)
+  } catch {
+    console.error('Error in DELETE /api/contacts/[id]')
     
     // Handle specific error cases
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
-    }
-    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 } 

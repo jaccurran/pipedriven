@@ -3,8 +3,16 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { PipedriveService } from '@/server/services/pipedriveService';
 
+interface PipedriveOrganization {
+  id: number;
+  name: string;
+  address?: string;
+  created: string;
+  updated: string;
+}
+
 // In-memory cache for search results (per user)
-const searchCache = new Map<string, { results: any[]; timestamp: number }>();
+const searchCache = new Map<string, { results: PipedriveOrganization[]; timestamp: number }>();
 const userRateLimits = new Map<string, { count: number; resetTime: number }>();
 
 // Cache TTL: 5 minutes
@@ -23,7 +31,7 @@ export async function POST(request: NextRequest) {
     let body;
     try {
       body = await request.json();
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
 
@@ -85,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // Search Pipedrive organizations
     const pipedriveService = new PipedriveService(user.pipedriveApiKey);
-    let results: any[] = [];
+    let results: PipedriveOrganization[] = [];
     try {
       const searchResult = await pipedriveService.searchOrganizations(query);
       if (searchResult.success && searchResult.organizations) {
@@ -115,14 +123,14 @@ export async function POST(request: NextRequest) {
 
     // Clean up old rate limit entries
     const oldRateLimits = Array.from(userRateLimits.entries())
-      .filter(([_, limit]) => now > limit.resetTime);
+      .filter(([, limit]) => now > limit.resetTime);
     oldRateLimits.forEach(([key]) => userRateLimits.delete(key));
 
     return NextResponse.json({ 
       results,
       cached: false 
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error', results: [] }, { status: 500 });
   }
 } 

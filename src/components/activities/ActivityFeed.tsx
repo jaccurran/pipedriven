@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, Badge, Button } from '@/components/ui'
 import type { ActivityType } from '@prisma/client'
 
@@ -73,14 +73,14 @@ const formatRelativeTime = (date: Date): string => {
   return new Date(date).toLocaleDateString()
 }
 
-export function ActivityFeed({ userId, className = '', limit = 20 }: ActivityFeedProps) {
+export function ActivityFeed({ className = '', limit = 20 }: ActivityFeedProps) {
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [page, setPage] = useState(1)
 
-  const fetchActivities = async (pageNum = 1, append = false) => {
+  const fetchActivities = useCallback(async (pageNum = 1, append = false) => {
     try {
       const params = new URLSearchParams({
         page: pageNum.toString(),
@@ -112,7 +112,7 @@ export function ActivityFeed({ userId, className = '', limit = 20 }: ActivityFee
     } finally {
       setLoading(false)
     }
-  }
+  }, [limit])
 
   const loadMore = () => {
     if (!loading && hasMore) {
@@ -131,7 +131,7 @@ export function ActivityFeed({ userId, className = '', limit = 20 }: ActivityFee
 
   useEffect(() => {
     fetchActivities()
-  }, [])
+  }, [fetchActivities])
 
   const renderLoadingSkeleton = () => (
     <div className="space-y-4">

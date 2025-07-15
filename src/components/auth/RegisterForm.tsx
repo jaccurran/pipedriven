@@ -108,7 +108,7 @@ export function RegisterForm({ callbackUrl = '/dashboard' }: RegisterFormProps) 
       } else if (result?.ok) {
         router.push(callbackUrl)
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     } finally {
       setIsLoading(false)

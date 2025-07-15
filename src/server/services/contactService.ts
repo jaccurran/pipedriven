@@ -257,7 +257,6 @@ export class ContactService {
   async searchContacts(options: SearchContactsOptions = {}): Promise<GetContactsResult> {
     const { 
       query,
-      sector,
       minWarmnessScore,
       maxWarmnessScore,
       addedToCampaign,
@@ -287,7 +286,7 @@ export class ContactService {
     }
     
     if (maxWarmnessScore !== undefined) {
-      if (where.warmnessScore) {
+      if (where.warmnessScore && typeof where.warmnessScore === 'object') {
         where.warmnessScore.lte = maxWarmnessScore
       } else {
         where.warmnessScore = { lte: maxWarmnessScore }

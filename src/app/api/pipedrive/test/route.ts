@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/auth'
-import { authOptions } from '@/lib/auth'
 import { createPipedriveService } from '@/server/services/pipedriveService'
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     // Get user session
     const session = await getServerSession()

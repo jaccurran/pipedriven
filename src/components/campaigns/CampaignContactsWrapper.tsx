@@ -2,12 +2,11 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { CampaignContactList } from './CampaignContactList'
-import type { Contact, Campaign } from '@prisma/client'
-import type { UserWithoutPassword } from '@/types/user'
+import type { Contact, Campaign, User } from '@prisma/client'
 
 interface CampaignContactsWrapperProps {
   campaign: Campaign
-  user: UserWithoutPassword
+  user: User
   initialContacts: Contact[]
 }
 
