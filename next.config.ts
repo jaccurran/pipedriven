@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  webpack: (config, { isServer }) => {
+  webpack: (config) => {
     // Exclude test files and scripts from the build
     config.module.rules.push({
       test: /\.(test|spec)\.(ts|tsx)$/,

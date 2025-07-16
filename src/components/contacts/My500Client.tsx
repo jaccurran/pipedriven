@@ -56,8 +56,8 @@ export function My500Client({
   const [order, setOrder] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1)
   
-  // React Query hooks
-  const { data: contactsData, isLoading } = useMy500Contacts({
+  // React Query hooks with error handling
+  const { isLoading, error: contactsError } = useMy500Contacts({
     search: debouncedSearchTerm,
     page,
     limit: 20,
@@ -67,21 +67,23 @@ export function My500Client({
   })
   
   const syncMutation = useSyncContacts()
-  const { data: syncStatusData } = useSyncStatus()
+  const { error: syncStatusError } = useSyncStatus()
   
-  // Extract data with fallbacks
-  const contacts = (contactsData?.data?.contacts as ContactWithActivities[]) || initialContacts
-  const pagination = (contactsData?.data?.pagination as PaginationInfo) || initialPagination || {
+  // Extract data with fallbacks and defensive checks
+  const contacts = Array.isArray(initialContacts) ? initialContacts : []
+  
+  const pagination = initialPagination || {
     page: 1,
     limit: 20,
-    total: initialContacts.length,
+    total: contacts.length,
     totalPages: 1,
     hasMore: false,
     hasPrev: false,
   }
-  const syncStatus = (syncStatusData as SyncStatus) || initialSyncStatus || {
+  
+  const syncStatus = initialSyncStatus || {
     lastSync: null,
-    totalContacts: initialContacts.length,
+    totalContacts: contacts.length,
     syncedContacts: 0,
     pendingSync: false,
     syncInProgress: false,
@@ -328,6 +330,24 @@ export function My500Client({
 
   return (
     <div className="w-full">
+      {/* Error Alert */}
+      {(contactsError || syncStatusError) && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error loading My-500 data</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{contactsError?.message || syncStatusError?.message || 'An unknown error occurred.'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Quick Action Toggle */}
       <div className="flex justify-end mb-4">
         <QuickActionToggle

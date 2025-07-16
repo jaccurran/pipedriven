@@ -23,7 +23,7 @@ try {
   execSync(`DATABASE_URL="${dbUrl}" pnpm prisma db seed`, { stdio: "inherit" });
   
   console.log("✅ Remote database setup and seeded successfully!");
-} catch (err) {
+} catch {
   console.error("❌ Failed to setup remote database.");
   process.exit(1);
 } 

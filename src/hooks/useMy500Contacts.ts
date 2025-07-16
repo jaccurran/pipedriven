@@ -83,6 +83,7 @@ export function useMy500Contacts(params: SearchParams = {}) {
     gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
     refetchOnWindowFocus: false,
     retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   })
 }
 
@@ -119,10 +120,11 @@ export function useSyncStatus() {
       })
       if (!response.ok) throw new Error('Failed to fetch sync status')
       const data = await response.json()
-      return data.data.syncStatus
+      return data.data?.syncStatus || null
     },
     staleTime: 30 * 1000, // 30 seconds
     gcTime: 2 * 60 * 1000, // 2 minutes (formerly cacheTime)
+    retry: 1,
   })
 }
 

@@ -15,18 +15,11 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials) {
-        console.log('🔐 NextAuth authorize called with:', {
-          email: credentials?.email,
-          hasPassword: !!credentials?.password
-        })
-
         if (!credentials?.email || !credentials?.password) {
-          console.log('❌ Missing email or password')
           return null
         }
 
         try {
-          console.log('🔍 Looking up user in database...')
           const user = await prisma.user.findUnique({
             where: { email: credentials.email },
             select: {
@@ -39,28 +32,16 @@ export const authOptions: NextAuthOptions = {
             },
           })
 
-          console.log('👤 User lookup result:', {
-            found: !!user,
-            hasPassword: !!user?.password,
-            email: user?.email,
-            role: user?.role
-          })
-
           if (!user || !user.password) {
-            console.log('❌ User not found or no password set')
             return null
           }
 
-          console.log('🔐 Verifying password...')
           const isValidPassword = await verifyPassword(credentials.password, user.password)
-          console.log('✅ Password verification result:', isValidPassword)
 
           if (!isValidPassword) {
-            console.log('❌ Password verification failed')
             return null
           }
 
-          console.log('✅ Authentication successful, returning user')
           return {
             id: user.id,
             email: user.email,
@@ -75,7 +56,9 @@ export const authOptions: NextAuthOptions = {
             pipedriveApiKey: string | null;
           }
         } catch (error) {
-          console.error('❌ Auth error:', error)
+          if (process.env.NODE_ENV === 'development') {
+            console.error('❌ Auth error:', error)
+          }
           return null
         }
       }
@@ -83,7 +66,9 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account }) {
-      console.log('🔐 signIn callback called:', { userId: user?.id, accountType: account?.type })
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔐 signIn callback called:', { userId: user?.id, accountType: account?.type })
+      }
       return true
     },
     async jwt({ token, user }) {
@@ -97,11 +82,13 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      console.log('🔐 session callback called:', { 
-        tokenId: token?.id, 
-        sessionUser: session?.user?.email,
-        hasToken: !!token
-      })
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔐 session callback called:', { 
+          tokenId: token?.id, 
+          sessionUser: session?.user?.email,
+          hasToken: !!token
+        })
+      }
       
       // Send properties to the client
       if (token && session.user) {
@@ -123,7 +110,7 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: true, // Enable NextAuth debug mode
+  debug: process.env.NODE_ENV === 'development', // Only enable debug in development
 }
 
 // Helper function to get current user from session
