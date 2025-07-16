@@ -34,15 +34,8 @@ export default async function CampaignsPage() {
     redirect('/auth/signin')
   }
 
-  // Get campaigns for the user
+  // Get all campaigns (visible to all users)
   const campaigns = await prisma.campaign.findMany({
-    where: {
-      users: {
-        some: {
-          id: user.id
-        }
-      }
-    },
     orderBy: {
       createdAt: 'desc'
     }

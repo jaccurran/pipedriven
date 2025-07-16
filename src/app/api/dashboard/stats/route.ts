@@ -22,15 +22,7 @@ export async function GET() {
       totalActivities,
       activeCampaigns,
     ] = await Promise.all([
-      prisma.campaign.count({
-        where: {
-          users: {
-            some: {
-              id: userId
-            }
-          }
-        }
-      }),
+      prisma.campaign.count(),
       prisma.contact.count({
         where: {
           userId
@@ -43,11 +35,6 @@ export async function GET() {
       }),
       prisma.campaign.count({
         where: {
-          users: {
-            some: {
-              id: userId
-            }
-          },
           endDate: {
             gte: new Date()
           }
