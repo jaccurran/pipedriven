@@ -96,13 +96,13 @@ export function ActivityFeed({ className = '', limit = 20 }: ActivityFeedProps) 
       const data = await response.json()
       
       if (data.success) {
-        const newActivities = data.data?.activities || data.data || []
+        const newActivities = Array.isArray(data.data?.activities) ? data.data.activities : (Array.isArray(data.data) ? data.data : [])
         if (append) {
           setActivities(prev => [...prev, ...newActivities])
         } else {
           setActivities(newActivities)
         }
-        setHasMore(newActivities.length === limit)
+        setHasMore(Array.isArray(newActivities) && newActivities.length === limit)
       } else {
         throw new Error(data.error || 'Failed to load activities')
       }
@@ -176,7 +176,7 @@ export function ActivityFeed({ className = '', limit = 20 }: ActivityFeedProps) 
     </div>
   )
 
-  if (loading && activities.length === 0) {
+  if (loading && (!activities || activities.length === 0)) {
     return (
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-between mb-6">
@@ -187,7 +187,7 @@ export function ActivityFeed({ className = '', limit = 20 }: ActivityFeedProps) 
     )
   }
 
-  if (error && activities.length === 0) {
+  if (error && (!activities || activities.length === 0)) {
     return (
       <Card className={`p-6 ${className}`}>
         <div className="flex items-center justify-between mb-6">
@@ -202,14 +202,14 @@ export function ActivityFeed({ className = '', limit = 20 }: ActivityFeedProps) 
     <Card className={`p-6 ${className}`}>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-gray-900">Activity Feed</h2>
-        {activities.length > 0 && (
+        {activities && activities.length > 0 && (
           <Badge variant="outline" size="sm">
             {activities.length}
           </Badge>
         )}
       </div>
 
-      {activities.length === 0 ? (
+      {!activities || activities.length === 0 ? (
         renderEmptyState()
       ) : (
         <div className="space-y-4">

@@ -113,13 +113,13 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
       const data = await response.json()
       
       if (data.success) {
-        const newActivities = data.data.activities || data.data || []
+        const newActivities = Array.isArray(data.data?.activities) ? data.data.activities : (Array.isArray(data.data) ? data.data : [])
         if (page === 1) {
           setActivities(newActivities)
         } else {
           setActivities(prev => [...prev, ...newActivities])
         }
-        setHasMore(newActivities.length === limit)
+        setHasMore(Array.isArray(newActivities) && newActivities.length === limit)
       } else {
         throw new Error(data.error || 'Failed to load activities')
       }
@@ -132,7 +132,7 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
   }, [limit])
 
   const loadMore = () => {
-    if (!loading && hasMore) {
+    if (!loading && hasMore && Array.isArray(activities)) {
       const nextPage = Math.floor(activities.length / limit) + 1
       fetchActivities(nextPage)
     }
@@ -172,7 +172,7 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
     </div>
   )
 
-  if (loading && activities.length === 0) {
+  if (loading && (!activities || activities.length === 0)) {
     return (
       <Card className={`p-4 ${className}`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Recent Activities</h3>
@@ -181,7 +181,7 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
     )
   }
 
-  if (error && activities.length === 0) {
+  if (error && (!activities || activities.length === 0)) {
     return (
       <Card className={`p-4 ${className}`}>
         <h3 className="text-sm font-semibold text-gray-900 mb-4">Recent Activities</h3>
@@ -194,14 +194,14 @@ export function ActivityTimeline({ className = '', limit = 10 }: ActivityTimelin
     <Card className={`p-4 ${className}`}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-900">Recent Activities</h3>
-        {activities.length > 0 && (
+        {activities && activities.length > 0 && (
           <Badge variant="outline" size="sm">
             {activities.length}
           </Badge>
         )}
       </div>
 
-      {activities.length === 0 ? (
+      {!activities || activities.length === 0 ? (
         renderEmptyState()
       ) : (
         <div className="space-y-3">

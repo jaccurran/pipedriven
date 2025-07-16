@@ -11,13 +11,19 @@ if (!dbUrl) {
 
 // Mask the password in logs for security
 const maskedUrl = dbUrl.replace(/:[^:]*@/, ':*****@');
-console.log(`🌱 Seeding remote database: ${maskedUrl}`);
+console.log(`🌱 Setting up remote database: ${maskedUrl}`);
 
 try {
-  // Run the seed with the provided DATABASE_URL
+  // First, push the schema to create/update tables
+  console.log("📋 Pushing database schema...");
+  execSync(`DATABASE_URL="${dbUrl}" pnpm prisma db push`, { stdio: "inherit" });
+  
+  // Then run the seed
+  console.log("🌱 Seeding database...");
   execSync(`DATABASE_URL="${dbUrl}" pnpm prisma db seed`, { stdio: "inherit" });
-  console.log("✅ Remote database seeded successfully!");
+  
+  console.log("✅ Remote database setup and seeded successfully!");
 } catch (err) {
-  console.error("❌ Failed to seed remote database.");
+  console.error("❌ Failed to setup remote database.");
   process.exit(1);
 } 

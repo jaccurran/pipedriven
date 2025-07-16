@@ -45,12 +45,17 @@ export function DashboardOverview({ user }: DashboardOverviewProps) {
 
         if (statsResponse.ok) {
           const statsData = await statsResponse.json()
-          setStats(statsData)
+          setStats({
+            totalCampaigns: statsData?.totalCampaigns || 0,
+            totalContacts: statsData?.totalContacts || 0,
+            totalActivities: statsData?.totalActivities || 0,
+            activeCampaigns: statsData?.activeCampaigns || 0,
+          })
         }
 
         if (activitiesResponse.ok) {
           const activitiesData = await activitiesResponse.json()
-          setRecentActivities(activitiesData)
+          setRecentActivities(Array.isArray(activitiesData) ? activitiesData : [])
         }
       } catch (error) {
         console.error('Error fetching dashboard data:', error)
@@ -280,11 +285,11 @@ export function DashboardOverview({ user }: DashboardOverviewProps) {
           </div>
           <div className="flow-root">
             <ul className="-mb-8">
-              {recentActivities.length > 0 ? (
+              {recentActivities && recentActivities.length > 0 ? (
                 recentActivities.map((activity, activityIdx) => (
                   <li key={activity.id}>
                     <div className="relative pb-8">
-                      {activityIdx !== recentActivities.length - 1 ? (
+                      {recentActivities && activityIdx !== recentActivities.length - 1 ? (
                         <span
                           className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"
                           aria-hidden="true"
