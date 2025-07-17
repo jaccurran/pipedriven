@@ -29,12 +29,6 @@ export async function GET(
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
-    // Check if user has access to this campaign
-    const hasAccess = campaign.users.some(user => user.id === session.user.id)
-    if (!hasAccess) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
-
     return NextResponse.json(campaign)
   } catch (error) {
     console.error('Error in GET /api/campaigns/[id]:', error)

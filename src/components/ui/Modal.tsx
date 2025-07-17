@@ -29,10 +29,14 @@ const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
       closeOnEscape = true,
       showCloseButton = true,
       ...props
-    }
+    },
+    ref
   ) => {
     const modalRef = useRef<HTMLDivElement>(null)
     const previousFocusRef = useRef<HTMLElement | null>(null)
+    
+    // Use forwarded ref or fallback to local ref
+    const finalRef = ref || modalRef
 
     // Handle escape key
     useEffect(() => {
@@ -47,7 +51,9 @@ const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
         // Store the currently focused element
         previousFocusRef.current = document.activeElement as HTMLElement
         // Focus the modal
-        modalRef.current?.focus()
+        if (typeof finalRef === 'object' && finalRef.current) {
+          finalRef.current.focus()
+        }
       }
 
       return () => {
@@ -57,7 +63,7 @@ const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
           previousFocusRef.current.focus()
         }
       }
-    }, [isOpen, onClose, closeOnEscape])
+    }, [isOpen, onClose, closeOnEscape, finalRef])
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -111,7 +117,7 @@ const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
         {/* Modal container */}
         <div className="flex min-h-full items-center justify-center p-4">
           <div
-            ref={modalRef}
+            ref={finalRef}
             className={cn(
               'relative w-full bg-white rounded-lg shadow-xl',
               'transform transition-all duration-300 ease-out',

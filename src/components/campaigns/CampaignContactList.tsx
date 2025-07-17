@@ -5,6 +5,7 @@ import { Contact, Campaign, User } from '@prisma/client'
 import { ContactCard } from '@/components/contacts/ContactCard'
 import { ContactForm } from '@/components/contacts/ContactForm'
 import { AddContactModal } from '@/components/campaigns/AddContactModal'
+import { ActivityForm } from '@/components/activities/ActivityForm'
 import { Button } from '@/components/ui'
 import { Modal } from '@/components/ui/Modal'
 import { QuickActionToggle } from '@/components/ui/QuickActionToggle'
@@ -38,6 +39,7 @@ interface CampaignContactListProps {
 export function CampaignContactList({
   contacts,
   campaign,
+  user,
   isLoading = false,
   className,
   onContactsUpdate,
@@ -59,6 +61,12 @@ export function CampaignContactList({
   }>>([])
   const [loadingPipedrive, setLoadingPipedrive] = useState(false)
   const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
+  
+  // Activity modal state
+  const [showActivityModal, setShowActivityModal] = useState(false)
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
+  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
 
   
   // Use ref to avoid dependency issues
@@ -337,62 +345,87 @@ export function CampaignContactList({
         setIsLoadingAction(false)
       }
     } else {
-      // Detailed mode: For now, use the same direct logging but with a more detailed note
-      // TODO: Implement proper detailed action forms using existing components
-      setIsLoadingAction(true)
-      try {
-        // Map action types to activity types
-        const activityTypeMap: Record<string, string> = {
+      // Detailed mode: show modal
+      const contact = contacts.find(c => c.id === contactId)
+      if (contact) {
+        setSelectedContact(contact)
+        const activityTypeMap: Record<string, 'EMAIL' | 'CALL' | 'MEETING'> = {
           'EMAIL': 'EMAIL',
           'MEETING_REQUEST': 'MEETING',
           'MEETING': 'MEETING',
-          'LINKEDIN': 'LINKEDIN',
+          'LINKEDIN': 'EMAIL',
           'PHONE_CALL': 'CALL',
-          'CONFERENCE': 'CONFERENCE'
+          'CONFERENCE': 'MEETING'
         }
-
-        const activityType = activityTypeMap[actionType] || 'EMAIL'
+        setActivityType(activityTypeMap[actionType] || 'EMAIL')
+        setShowActivityModal(true)
         
-        // Create activity via API with detailed note
-        const response = await fetch('/api/activities', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            type: activityType,
-            contactId: contactId,
-            campaignId: campaign.id,
-            note: `Detailed activity logged: ${actionType} - User selected detailed mode for this action`,
-          }),
-        })
-
-        if (response.ok) {
-          // Show success message
-          const successMessage = `Detailed activity "${actionType}" logged successfully for contact`
-          setSuccessMessage(successMessage)
-          setShowSuccessMessage(true)
-          
-          // Hide success message after 3 seconds
-          setTimeout(() => {
-            setShowSuccessMessage(false)
-            setSuccessMessage('')
-          }, 3000)
-          
-          // Refresh contacts to show updated lastContacted
-          if (onContactsUpdate) {
-            onContactsUpdate()
+        // Fetch campaigns if not already loaded
+        if (campaigns.length === 0) {
+          try {
+            const response = await fetch('/api/campaigns')
+            if (response.ok) {
+              const data = await response.json()
+              setCampaigns(data.campaigns || [])
+            }
+          } catch (error) {
+            console.error('Failed to fetch campaigns:', error)
           }
-        } else {
-          console.error('Failed to log activity:', await response.text())
         }
-      } catch (error) {
-        console.error('Failed to log activity:', error)
-      } finally {
-        setIsLoadingAction(false)
       }
     }
-  }, [campaign.id, onContactsUpdate, quickActionMode])
+  }, [campaign.id, onContactsUpdate, quickActionMode, contacts, campaigns])
+
+  const handleActivitySubmit = useCallback(async (activityData: {
+    type: string;
+    subject?: string;
+    note?: string;
+    dueDate?: Date;
+    contactId?: string;
+    campaignId?: string;
+  }) => {
+    try {
+      const cleanedData = {
+        ...activityData,
+        contactId: selectedContact?.id || activityData.contactId || null,
+        campaignId: campaign.id, // Always use current campaign
+        note: activityData.note || null,
+        dueDate: activityData.dueDate ? activityData.dueDate.toISOString() : null,
+      }
+
+      const response = await fetch('/api/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(cleanedData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(`Failed to create activity: ${errorData.error || response.statusText}`)
+      }
+
+      setSuccessMessage(`Activity "${cleanedData.subject}" logged successfully for ${selectedContact?.name}`)
+      setShowSuccessMessage(true)
+      setTimeout(() => setShowSuccessMessage(false), 3000)
+
+      setShowActivityModal(false)
+      setSelectedContact(null)
+      
+      // Refresh contacts to show updated lastContacted
+      if (onContactsUpdate) {
+        onContactsUpdate()
+      }
+    } catch (error) {
+      console.error('Failed to log activity:', error)
+      alert(`Failed to log activity: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [selectedContact, campaign.id, onContactsUpdate])
+
+  const handleActivityCancel = useCallback(() => {
+    setShowActivityModal(false)
+    setSelectedContact(null)
+  }, [])
 
 
 
@@ -531,7 +564,33 @@ export function CampaignContactList({
         />
       </Modal>
 
-
+      {/* Activity Modal */}
+      <Modal
+        isOpen={showActivityModal}
+        onClose={handleActivityCancel}
+        title={`Log ${activityType.toLowerCase()} for ${selectedContact?.name}`}
+        size="lg"
+      >
+        {selectedContact && user && (
+          <ActivityForm
+            userId={user.id}
+            contacts={[{
+              id: selectedContact.id,
+              name: selectedContact.name,
+              organisation: selectedContact.organisation || undefined,
+            }]}
+            campaigns={campaigns}
+            onSubmit={handleActivitySubmit}
+            onCancel={handleActivityCancel}
+            initialData={{
+              type: activityType,
+              subject: `${activityType} with ${selectedContact.name}`,
+              contactId: selectedContact.id,
+              campaignId: campaign.id,
+            }}
+          />
+        )}
+      </Modal>
 
       {/* Success Message Toast */}
       {showSuccessMessage && (

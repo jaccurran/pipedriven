@@ -15,13 +15,42 @@ interface ContactListProps {
   onDelete?: (contact: Contact) => void
   onActivity?: (contactId: string, activityType: string) => void
   onBulkAction?: (contactIds: string[], action: string) => void
+  searchParams?: {
+    search: string
+    page: number
+    limit: number
+    statusFilter: string
+    sourceFilter: string
+    tagFilter: string
+    sort: string
+    order: 'asc' | 'desc'
+    country?: string
+    sector?: string
+  }
+  onSearchChange?: (params: {
+    search: string
+    page: number
+    limit: number
+    statusFilter: string
+    sourceFilter: string
+    tagFilter: string
+    sort: string
+    order: 'asc' | 'desc'
+    country?: string
+    sector?: string
+  }) => void
+  pagination?: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+    hasMore: boolean
+    hasPrev: boolean
+  }
   className?: string
 }
 
-type SortOption = 'name' | 'lastActivity' | 'warmnessScore' | 'createdAt'
-type FilterStatus = 'all' | 'warm' | 'cold' | 'active' | 'inactive'
-type FilterSource = 'all' | 'pipedrive' | 'local'
-type FilterTags = 'all' | 'warm' | 'cold' | 'lost'
+// Types moved to API level since filtering/sorting is now handled server-side
 
 export function ContactList({ 
   contacts, 
@@ -29,16 +58,32 @@ export function ContactList({
   onDelete, 
   onActivity, 
   onBulkAction,
+  searchParams,
+  onSearchChange,
+  pagination,
   className = '' 
 }: ContactListProps) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all')
-  const [sourceFilter, setSourceFilter] = useState<FilterSource>('all')
-  const [tagFilter, setTagFilter] = useState<FilterTags>('all')
-  const [sortBy, setSortBy] = useState<SortOption>('name')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
   const [bulkMode, setBulkMode] = useState(false)
+
+  // Use search params from props or defaults
+  const currentSearchParams = searchParams || {
+    search: '',
+    page: 1,
+    limit: 20,
+    statusFilter: '',
+    sourceFilter: '',
+    tagFilter: '',
+    sort: 'createdAt',
+    order: 'desc' as const
+  }
+
+  // Helper function to update search params
+  const updateSearchParams = (updates: Partial<typeof currentSearchParams>) => {
+    if (onSearchChange) {
+      onSearchChange({ ...currentSearchParams, ...updates })
+    }
+  }
 
   // Enhanced contact data with computed fields
   const enhancedContacts = useMemo(() => {
@@ -86,54 +131,19 @@ export function ContactList({
     })
   }, [contacts])
 
-  // Filter contacts
+  // Filter contacts (now handled by the API, but we can do additional client-side filtering if needed)
   const filteredContacts = useMemo(() => {
-    return enhancedContacts.filter(contact => {
-      const matchesSearch = 
-        contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (contact.email && contact.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (contact.organisation && contact.organisation.toLowerCase().includes(searchTerm.toLowerCase()))
+    // Since filtering is now handled by the API, we just return the contacts as-is
+    // Additional client-side filtering can be added here if needed
+    return enhancedContacts
+  }, [enhancedContacts])
 
-      const matchesStatus = statusFilter === 'all' || contact.status === statusFilter
-      
-      const matchesSource = sourceFilter === 'all' || 
-        (sourceFilter === 'pipedrive' && contact.pipedriveStatus) ||
-        (sourceFilter === 'local' && !contact.pipedriveStatus)
-      
-      const matchesTags = tagFilter === 'all' || 
-        (tagFilter === 'warm' && contact.tags.includes('WARM')) ||
-        (tagFilter === 'cold' && contact.tags.includes('COLD')) ||
-        (tagFilter === 'lost' && contact.tags.includes('LOST'))
-
-      return matchesSearch && matchesStatus && matchesSource && matchesTags
-    })
-  }, [enhancedContacts, searchTerm, statusFilter, sourceFilter, tagFilter])
-
-  // Sort contacts
+  // Sort contacts (now handled by the API, but we can do additional client-side sorting if needed)
   const sortedContacts = useMemo(() => {
-    return [...filteredContacts].sort((a, b) => {
-      let comparison = 0
-
-      switch (sortBy) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name)
-          break
-        case 'lastActivity':
-          const aDate = a.lastActivityDate ? new Date(a.lastActivityDate).getTime() : 0
-          const bDate = b.lastActivityDate ? new Date(b.lastActivityDate).getTime() : 0
-          comparison = aDate - bDate
-          break
-        case 'warmnessScore':
-          comparison = a.warmnessScore - b.warmnessScore
-          break
-        case 'createdAt':
-          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          break
-      }
-
-      return sortOrder === 'asc' ? comparison : -comparison
-    })
-  }, [filteredContacts, sortBy, sortOrder])
+    // Since sorting is now handled by the API, we just return the contacts as-is
+    // Additional client-side sorting can be added here if needed
+    return filteredContacts
+  }, [filteredContacts])
 
   // Handle bulk selection
   const handleSelectContact = (contactId: string) => {
@@ -171,7 +181,7 @@ export function ContactList({
   }
 
   const toggleSortOrder = () => {
-    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    updateSearchParams({ order: currentSearchParams.order === 'asc' ? 'desc' : 'asc' })
   }
 
   if (contacts.length === 0) {
@@ -247,9 +257,9 @@ export function ContactList({
 
       {/* Filters and Search */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="space-y-4">
           {/* Search */}
-          <div className="flex-1">
+          <div>
             <label htmlFor="search" className="sr-only">Search contacts</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -260,8 +270,8 @@ export function ContactList({
               <input
                 type="text"
                 id="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={currentSearchParams.search}
+                onChange={(e) => updateSearchParams({ search: e.target.value, page: 1 })}
                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Search contacts..."
                 aria-label="Search contacts"
@@ -270,14 +280,16 @@ export function ContactList({
           </div>
           
           {/* Filters */}
-          <div className="flex flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Filters</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
+              value={currentSearchParams.statusFilter}
+              onChange={(e) => updateSearchParams({ statusFilter: e.target.value, page: 1 })}
               className="block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
               aria-label="Filter by status"
             >
-              <option value="all">All Status</option>
+              <option value="">All Status</option>
               <option value="warm">Warm</option>
               <option value="active">Active</option>
               <option value="cold">Cold</option>
@@ -285,33 +297,71 @@ export function ContactList({
             </select>
             
             <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value as FilterSource)}
+              value={currentSearchParams.sourceFilter}
+              onChange={(e) => updateSearchParams({ sourceFilter: e.target.value, page: 1 })}
               className="block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
               aria-label="Filter by source"
             >
-              <option value="all">All Sources</option>
+              <option value="">All Sources</option>
               <option value="pipedrive">Pipedrive</option>
               <option value="local">Local</option>
             </select>
 
             <select
-              value={tagFilter}
-              onChange={(e) => setTagFilter(e.target.value as FilterTags)}
+              value={currentSearchParams.tagFilter}
+              onChange={(e) => updateSearchParams({ tagFilter: e.target.value, page: 1 })}
               className="block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
               aria-label="Filter by tags"
             >
-              <option value="all">All Tags</option>
+              <option value="">All Tags</option>
               <option value="warm">Warm</option>
               <option value="cold">Cold</option>
               <option value="lost">Lost</option>
             </select>
 
+            <select
+              value={currentSearchParams.country || ''}
+              onChange={(e) => updateSearchParams({ country: e.target.value || undefined, page: 1 })}
+              className="block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              aria-label="Filter by country"
+            >
+              <option value="">All Countries</option>
+              <option value="United States">United States</option>
+              <option value="United Kingdom">United Kingdom</option>
+              <option value="Canada">Canada</option>
+              <option value="Australia">Australia</option>
+              <option value="Germany">Germany</option>
+              <option value="France">France</option>
+              <option value="Netherlands">Netherlands</option>
+              <option value="Sweden">Sweden</option>
+              <option value="Norway">Norway</option>
+              <option value="Denmark">Denmark</option>
+            </select>
+
+            <select
+              value={currentSearchParams.sector || ''}
+              onChange={(e) => updateSearchParams({ sector: e.target.value || undefined, page: 1 })}
+              className="block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              aria-label="Filter by sector"
+            >
+              <option value="">All Sectors</option>
+              <option value="Technology">Technology</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Finance">Finance</option>
+              <option value="Education">Education</option>
+              <option value="Manufacturing">Manufacturing</option>
+              <option value="Retail">Retail</option>
+              <option value="Consulting">Consulting</option>
+              <option value="Marketing">Marketing</option>
+              <option value="Real Estate">Real Estate</option>
+              <option value="Transportation">Transportation</option>
+            </select>
+
             {/* Sort */}
             <div className="flex items-center space-x-1">
               <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                value={currentSearchParams.sort}
+                onChange={(e) => updateSearchParams({ sort: e.target.value, page: 1 })}
                 className="block px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
                 aria-label="Sort contacts"
               >
@@ -323,9 +373,9 @@ export function ContactList({
               <button
                 onClick={toggleSortOrder}
                 className="p-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
-                aria-label={`Sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                aria-label={`Sort ${currentSearchParams.order === 'asc' ? 'descending' : 'ascending'}`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 12">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
               </button>
@@ -340,6 +390,7 @@ export function ContactList({
             >
               {selectedContacts.size === sortedContacts.length ? 'Deselect All' : 'Select All'}
             </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -347,7 +398,12 @@ export function ContactList({
       {/* Results Count */}
       <div className="flex items-center justify-between text-sm text-gray-600">
         <span>
-          Showing {filteredContacts.length} of {contacts.length} contacts
+          Showing {filteredContacts.length} of {pagination?.total || contacts.length} contacts
+          {pagination && (
+            <span className="ml-2">
+              (Page {pagination.page} of {pagination.totalPages})
+            </span>
+          )}
         </span>
         {selectedContacts.size > 0 && (
           <span className="text-blue-600 font-medium">
@@ -386,6 +442,33 @@ export function ContactList({
         ))}
       </div>
 
+      {/* Pagination */}
+      {pagination && pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateSearchParams({ page: pagination.page - 1 })}
+              disabled={!pagination.hasPrev}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600">
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateSearchParams({ page: pagination.page + 1 })}
+              disabled={!pagination.hasMore}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* No Results */}
       {filteredContacts.length === 0 && contacts.length > 0 && (
         <div className="text-center py-8">
@@ -397,10 +480,17 @@ export function ContactList({
             variant="outline"
             size="sm"
             onClick={() => {
-              setSearchTerm('')
-              setStatusFilter('all')
-              setSourceFilter('all')
-              setTagFilter('all')
+              updateSearchParams({
+                search: '',
+                statusFilter: '',
+                sourceFilter: '',
+                tagFilter: '',
+                sort: 'createdAt',
+                order: 'desc',
+                page: 1,
+                country: undefined,
+                sector: undefined
+              })
             }}
             className="mt-2"
           >

@@ -47,8 +47,8 @@ export function PipedriveApiKeyForm({ currentApiKey }: PipedriveApiKeyFormProps)
     setTestResult(null)
 
     try {
-      const response = await fetch('/api/user/pipedrive-api-key', {
-        method: 'PUT',
+      const response = await fetch('/api/auth/validate-api-key', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -57,7 +57,7 @@ export function PipedriveApiKeyForm({ currentApiKey }: PipedriveApiKeyFormProps)
 
       const data = await response.json()
 
-      if (response.ok) {
+      if (response.ok && data.success) {
         setMessage({ type: 'success', text: 'Pipedrive API key updated successfully!' })
         setShowApiKey(false)
       } else {
@@ -180,10 +180,10 @@ export function PipedriveApiKeyForm({ currentApiKey }: PipedriveApiKeyFormProps)
             <div className="mb-4">
               <h4 className="text-sm font-medium text-gray-700 mb-2">User Information</h4>
               <div className="bg-white p-3 rounded border text-sm space-y-1">
-                <div><span className="font-medium">Name:</span> {testResult.user.name}</div>
-                <div><span className="font-medium">Email:</span> {testResult.user.email}</div>
-                <div><span className="font-medium">ID:</span> {testResult.user.id}</div>
-                {testResult.user.company && (
+                <div><span className="font-medium">Name:</span> {testResult.user?.name || 'N/A'}</div>
+                <div><span className="font-medium">Email:</span> {testResult.user?.email || 'N/A'}</div>
+                <div><span className="font-medium">ID:</span> {testResult.user?.id || 'N/A'}</div>
+                {testResult.user?.company && (
                   <div><span className="font-medium">Company:</span> {testResult.user.company}</div>
                 )}
               </div>
@@ -254,14 +254,6 @@ export function PipedriveApiKeyForm({ currentApiKey }: PipedriveApiKeyFormProps)
           {isLoading ? 'Testing...' : 'Test Connection'}
         </button>
       </div>
-
-      {currentApiKey && (
-        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-          <p className="text-sm text-green-700">
-            ✅ Pipedrive API key is configured and ready to use.
-          </p>
-        </div>
-      )}
     </div>
   )
 } 

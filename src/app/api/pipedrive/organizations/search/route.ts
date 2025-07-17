@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { PipedriveService } from '@/server/services/pipedriveService';
-
-interface PipedriveOrganization {
-  id: number;
-  name: string;
-  address?: string;
-  created: string;
-  updated: string;
-}
+import { type PipedriveOrganization, createPipedriveService } from '@/server/services/pipedriveService';
 
 // In-memory cache for search results (per user)
 const searchCache = new Map<string, { results: PipedriveOrganization[]; timestamp: number }>();
@@ -24,7 +16,7 @@ const RATE_LIMIT_MAX = 10; // 10 requests per minute
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -47,7 +39,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const userId = session.user.email;
+    const userId = session.user.id;
     const cacheKey = `${userId}:${query.toLowerCase().trim()}`;
 
     // Check cache first
@@ -77,22 +69,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get user's Pipedrive API key
-    const { prisma } = await import('@/lib/prisma');
-    const user = await prisma.user.findUnique({
-      where: { email: userId },
-      select: { pipedriveApiKey: true }
-    });
-
-    if (!user?.pipedriveApiKey) {
+    // Get user's Pipedrive service
+    const pipedriveService = await createPipedriveService(session.user.id);
+    if (!pipedriveService) {
       return NextResponse.json({ 
-        error: 'Pipedrive API key not configured',
+        error: 'Pipedrive API key not configured or invalid',
         results: [] 
       }, { status: 400 });
     }
 
     // Search Pipedrive organizations
-    const pipedriveService = new PipedriveService(user.pipedriveApiKey);
     let results: PipedriveOrganization[] = [];
     try {
       const searchResult = await pipedriveService.searchOrganizations(query);

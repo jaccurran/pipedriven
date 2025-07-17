@@ -1,7 +1,7 @@
+import { prisma } from '@/lib/prisma'
 import '@testing-library/jest-dom/vitest';
 import * as React from 'react'
-import { PrismaClient } from '@prisma/client'
-import { beforeEach, afterEach, afterAll, vi } from 'vitest'
+import { beforeEach, afterAll, vi } from 'vitest'
 
 // Make React available globally for JSX
 global.React = React
@@ -39,18 +39,7 @@ vi.mock('next-auth/react', () => ({
   SessionProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
-// Create a single Prisma client instance for testing
-// Use the same DATABASE_URL that vitest configures
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-})
-
 // Only clean up database if we're explicitly running tests
-// This prevents accidental data loss during development
 const shouldCleanDatabase = process.env.NODE_ENV === 'test' || process.env.VITEST
 
 // Clean up database before each test for proper isolation
@@ -68,14 +57,6 @@ beforeEach(async () => {
   vi.resetAllMocks()
 })
 
-// Clean up after each test
-afterEach(async () => {
-  // Additional cleanup if needed
-})
-
 afterAll(async () => {
   await prisma.$disconnect()
-})
-
-// Export prisma instance for use in tests
-export { prisma } 
+}) 

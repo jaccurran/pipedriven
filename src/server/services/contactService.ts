@@ -37,6 +37,11 @@ export interface GetContactsOptions {
   maxWarmnessScore?: number
   campaignId?: string
   addedToCampaign?: boolean
+  query?: string // Search query for name, email, organisation
+  sortBy?: 'name' | 'createdAt' | 'warmnessScore' | 'lastContacted'
+  sortOrder?: 'asc' | 'desc'
+  country?: string // Filter by organization country
+  sector?: string // Filter by organization industry/sector
 }
 
 export interface PaginationInfo {
@@ -98,7 +103,12 @@ export class ContactService {
       minWarmnessScore,
       maxWarmnessScore,
       campaignId,
-      addedToCampaign
+      addedToCampaign,
+      query,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      country,
+      sector
     } = options
     
     const skip = (page - 1) * limit
@@ -109,16 +119,26 @@ export class ContactService {
       where.userId = userId
     }
     
-    if (name) {
-      where.name = { contains: name, mode: 'insensitive' }
-    }
-    
-    if (email) {
-      where.email = { contains: email, mode: 'insensitive' }
-    }
-    
-    if (organisation) {
-      where.organisation = { contains: organisation, mode: 'insensitive' }
+    // Handle search query
+    if (query) {
+      where.OR = [
+        { name: { contains: query, mode: 'insensitive' } },
+        { email: { contains: query, mode: 'insensitive' } },
+        { organisation: { contains: query, mode: 'insensitive' } },
+      ]
+    } else {
+      // Individual field searches
+      if (name) {
+        where.name = { contains: name, mode: 'insensitive' }
+      }
+      
+      if (email) {
+        where.email = { contains: email, mode: 'insensitive' }
+      }
+      
+      if (organisation) {
+        where.organisation = { contains: organisation, mode: 'insensitive' }
+      }
     }
     
     if (minWarmnessScore !== undefined || maxWarmnessScore !== undefined) {
@@ -139,12 +159,27 @@ export class ContactService {
       where.addedToCampaign = addedToCampaign
     }
 
+    // Handle organization filters
+    if (country || sector) {
+      where.organization = {}
+      if (country) {
+        where.organization.country = { contains: country, mode: 'insensitive' }
+      }
+      if (sector) {
+        where.organization.industry = { contains: sector, mode: 'insensitive' }
+      }
+    }
+
+    // Handle sorting
+    const orderBy: Prisma.ContactOrderByWithRelationInput = {}
+    orderBy[sortBy] = sortOrder
+
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
       }),
       prisma.contact.count({ where }),
     ])

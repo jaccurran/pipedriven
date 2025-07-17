@@ -314,7 +314,7 @@ export function DashboardOverview({ user }: DashboardOverviewProps) {
                           </div>
                           <div className="text-right text-sm whitespace-nowrap text-gray-500">
                             <time dateTime={activity.createdAt}>
-                              {new Date(activity.createdAt).toLocaleDateString()}
+                              {new Date(activity.createdAt).toLocaleDateString('en-GB')}
                             </time>
                           </div>
                         </div>

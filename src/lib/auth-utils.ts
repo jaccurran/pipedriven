@@ -5,7 +5,7 @@ import crypto from 'crypto'
  * Hash a password using bcrypt
  */
 export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 12
+  const saltRounds = 14 // Match the seed file
   return bcrypt.hash(password, saltRounds)
 }
 

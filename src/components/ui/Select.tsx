@@ -41,13 +41,17 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
       id,
       name,
       ...props
-    }
+    },
+    ref
   ) => {
     const [isOpen, setIsOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
     const [focusedIndex, setFocusedIndex] = useState(-1)
     const selectRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+    
+    // Use forwarded ref or fallback to local ref
+    const finalRef = ref || selectRef
 
     const reactId = React.useId()
     const selectId = id || name || `select-${reactId}`
@@ -59,7 +63,9 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
     )
 
     // Get selected option
-    const selectedOption = options.find(option => option.value === value)
+    const selectedOption = options.find(option => 
+      option.value === value || (value === undefined && option.value === '')
+    )
 
     // Handle click outside to close dropdown
     useEffect(() => {
@@ -182,7 +188,7 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
           />
           <div
-            ref={selectRef}
+            ref={finalRef}
             className={containerClasses}
             onKeyDown={handleKeyDown}
             role="combobox"

@@ -1,29 +1,64 @@
 import { prisma } from '@/lib/prisma'
 import type { Contact, Activity, ActivityType } from '@prisma/client'
 import { pipedriveConfig, getPipedriveApiUrl, validatePipedriveConfig } from '@/lib/pipedrive-config'
+import { decryptApiKey } from '@/lib/apiKeyEncryption'
 
 export interface PipedrivePerson {
   id: number
   name: string
-  email: string[]
-  phone: string[]
+  email: Array<{
+    label: string
+    value: string
+    primary: boolean
+  }>
+  phone: Array<{
+    label: string
+    value: string
+    primary: boolean
+  }>
   org_name?: string
   org_id?: number
   created: string
   updated: string
+  custom_fields?: Record<string, unknown>
+  update_time?: number
+}
+
+export interface PipedriveCustomField {
+  id: number
+  name: string
+  key: string
+  field_type: string
+  options?: Array<{
+    id: number
+    label: string
+    value: string
+  }>
+}
+
+export interface PipedriveCustomFieldMapping {
+  stillActiveFieldKey?: string
+  activeValue?: string
+  campaignFieldKey?: string
+  warmnessScoreFieldKey?: string
+  lastContactedFieldKey?: string
 }
 
 // Alias for backward compatibility
 export type PipedriveContact = PipedrivePerson
 
-interface PipedriveOrganization {
+export interface PipedriveOrganization {
   id: number
   name: string
   address?: string
+  visible_to?: number
+  owner_id?: number
+  cc_email?: string
   created: string
   updated: string
+  country?: string
+  industry?: string
 }
-
 
 
 interface PipedriveUser {
@@ -266,31 +301,101 @@ export class PipedriveService {
   }
 
   /**
-   * Get all persons from Pipedrive
+   * Get all persons from Pipedrive using the "Persons Still Active - Pipedriver" filter
    */
   async getPersons(): Promise<{ success: boolean; persons?: PipedrivePerson[]; error?: string }> {
     try {
-      const result = await this.makeApiRequest('/persons', {}, {
-        endpoint: '/persons',
-        method: 'GET',
-      })
+      const allPersons: PipedrivePerson[] = []
+      const limit = 100
+      let start = 0
+      let fetched = 0
+      let keepFetching = true
 
-      if (!result.success) {
+      // Get the "Persons Still Active - Pipedriver" filter ID
+      const filterResult = await this.getStillActiveFilter()
+      
+      if (!filterResult.success || !filterResult.filterId) {
         return {
           success: false,
-          error: result.error || 'Failed to fetch persons from Pipedrive',
+          error: 'Required Pipedrive filter "Persons Still Active - Pipedriver" not found. Please ensure this filter exists in your Pipedrive account.',
         }
+      }
+
+      // Use the filter to get only active contacts
+      while (keepFetching) {
+        const endpoint = `/persons?start=${start}&limit=${limit}&filter_id=${filterResult.filterId}&include_custom_fields=1`
+        
+        const result = await this.makeApiRequest(endpoint, {}, {
+          endpoint: '/persons',
+          method: 'GET',
+        })
+
+        if (!result.success) {
+          return {
+            success: false,
+            error: result.error || 'Failed to fetch persons from Pipedrive',
+          }
+        }
+
+        const persons = result.data?.data as PipedrivePerson[] | undefined || []
+        allPersons.push(...persons)
+        fetched = persons.length
+        start += fetched
+        keepFetching = fetched === limit
       }
 
       return {
         success: true,
-        persons: result.data?.data as PipedrivePerson[] | undefined,
+        persons: allPersons
       }
     } catch (error) {
       console.error('Pipedrive API error:', error)
       return {
         success: false,
         error: 'Failed to fetch persons from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get the "Persons Still Active - Pipedriver" filter ID
+   */
+  async getStillActiveFilter(): Promise<{ success: boolean; filterId?: number; error?: string }> {
+    try {
+      const result = await this.makeApiRequest('/filters?type=people', {}, {
+        endpoint: '/filters',
+        method: 'GET',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch filters from Pipedrive',
+        }
+      }
+
+      const filters = result.data?.data as Array<{ id: number; name: string }> | undefined || []
+      
+      // Find the "Persons Still Active - Pipedriver" filter
+      const stillActiveFilter = filters.find(filter => 
+        filter.name === 'Persons Still Active - Pipedriver'
+      )
+
+      if (stillActiveFilter) {
+        return {
+          success: true,
+          filterId: stillActiveFilter.id
+        }
+      }
+      return {
+        success: false,
+        error: 'Still Active filter not found'
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch filters from Pipedrive',
       }
     }
   }
@@ -321,6 +426,66 @@ export class PipedriveService {
       return {
         success: false,
         error: 'Failed to fetch organizations from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get custom fields for persons
+   */
+  async getPersonCustomFields(): Promise<{ success: boolean; fields?: PipedriveCustomField[]; error?: string }> {
+    try {
+      const result = await this.makeApiRequest('/personFields', {}, {
+        endpoint: '/personFields',
+        method: 'GET',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch person custom fields from Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        fields: result.data?.data as PipedriveCustomField[] | undefined,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch person custom fields from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get custom fields for organizations
+   */
+  async getOrganizationCustomFields(): Promise<{ success: boolean; fields?: PipedriveCustomField[]; error?: string }> {
+    try {
+      const result = await this.makeApiRequest('/organizationFields', {}, {
+        endpoint: '/organizationFields',
+        method: 'GET',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch organization custom fields from Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        fields: result.data?.data as PipedriveCustomField[] | undefined,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch organization custom fields from Pipedrive',
       }
     }
   }
@@ -392,20 +557,118 @@ export class PipedriveService {
       // Transform the search results to match our PipedrivePerson interface
       return persons.map((item: unknown) => {
         const typedItem = item as { item?: PipedrivePerson; id?: number; name?: string; email?: string[]; phone?: string[]; org_name?: string; org_id?: number; created?: string; updated?: string }
+        
+        // Transform email and phone to the correct format
+        const transformContactInfo = (info: string[] | undefined): Array<{ label: string; value: string; primary: boolean }> => {
+          if (!info || !Array.isArray(info)) return []
+          return info.map((value, index) => ({
+            label: index === 0 ? 'primary' : 'other',
+            value,
+            primary: index === 0
+          }))
+        }
+        
         return {
           id: typedItem.item?.id || typedItem.id || 0,
           name: typedItem.item?.name || typedItem.name || '',
-          email: typedItem.item?.email || typedItem.email || [],
-          phone: typedItem.item?.phone || typedItem.phone || [],
+          email: typedItem.item?.email || transformContactInfo(typedItem.email),
+          phone: typedItem.item?.phone || transformContactInfo(typedItem.phone),
           org_name: typedItem.item?.org_name || typedItem.org_name,
           org_id: typedItem.item?.org_id || typedItem.org_id,
           created: typedItem.item?.created || typedItem.created || '',
           updated: typedItem.item?.updated || typedItem.updated || '',
+          custom_fields: typedItem.item?.custom_fields
         }
       })
     } catch (error) {
       console.error('Pipedrive search error:', error)
       return []
+    }
+  }
+
+  /**
+   * Discover and map custom fields for persons
+   */
+  async discoverCustomFieldMappings(): Promise<{ success: boolean; mappings?: PipedriveCustomFieldMapping; error?: string }> {
+    try {
+      const customFieldsResult = await this.getPersonCustomFields()
+      
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        return {
+          success: false,
+          error: 'Failed to fetch custom fields'
+        }
+      }
+
+      const fields = customFieldsResult.fields as PipedriveCustomField[]
+      const mappings: PipedriveCustomFieldMapping = {}
+
+      // Find "Still Active?" field
+      const stillActiveField = fields.find(field => 
+        field.name && (
+          field.name === 'Still Active?' ||
+          field.name.toLowerCase().includes('still active') ||
+          field.name.toLowerCase().includes('active') ||
+          field.name.toLowerCase().includes('status')
+        )
+      )
+
+      if (stillActiveField) {
+        mappings.stillActiveFieldKey = stillActiveField.key
+        
+        // Find the "Active" option
+        if (stillActiveField.options && Array.isArray(stillActiveField.options)) {
+          const activeOption = stillActiveField.options.find(option => 
+            option.label && option.label.toLowerCase().includes('active')
+          )
+          if (activeOption) {
+            mappings.activeValue = activeOption.value || activeOption.label
+          }
+        }
+      }
+
+      // Find campaign field
+      const campaignField = fields.find(field => 
+        field.name && field.name.toLowerCase().includes('campaign')
+      )
+      if (campaignField) {
+        mappings.campaignFieldKey = campaignField.key
+      }
+
+      // Find warmness score field
+      const warmnessField = fields.find(field => 
+        field.name && (
+          field.name.toLowerCase().includes('warmness') ||
+          field.name.toLowerCase().includes('score') ||
+          field.name.toLowerCase().includes('priority')
+        )
+      )
+      if (warmnessField) {
+        mappings.warmnessScoreFieldKey = warmnessField.key
+      }
+
+      // Find last contacted field
+      const lastContactedField = fields.find(field => 
+        field.name && (
+          field.name.toLowerCase().includes('last contacted') ||
+          field.name.toLowerCase().includes('last contact') ||
+          field.name.toLowerCase().includes('contacted')
+        )
+      )
+      if (lastContactedField) {
+        mappings.lastContactedFieldKey = lastContactedField.key
+      }
+
+      return {
+        success: true,
+        mappings
+      }
+    } catch (error) {
+      console.error('Error discovering custom field mappings:', error)
+      return {
+        success: false,
+        error: 'Failed to discover custom field mappings'
+      }
     }
   }
 
@@ -561,7 +824,6 @@ export class PipedriveService {
         
         if (attempt <= maxRetries) {
           const delay = pipedriveConfig.retryDelay * Math.pow(2, attempt - 1)
-          console.log(`Retrying in ${delay}ms...`)
           await new Promise(resolve => setTimeout(resolve, delay))
         } else {
           return {
@@ -613,7 +875,16 @@ export async function createPipedriveService(userId: string): Promise<PipedriveS
       return null
     }
 
-    return new PipedriveService(user.pipedriveApiKey)
+    // Decrypt the API key before creating the service
+    let decryptedApiKey: string
+    try {
+      decryptedApiKey = await decryptApiKey(user.pipedriveApiKey)
+    } catch (error) {
+      console.error(`Failed to decrypt API key for user ${userId}:`, error)
+      return null
+    }
+
+    return new PipedriveService(decryptedApiKey)
   } catch (error) {
     console.error('Failed to create Pipedrive service:', error)
     return null

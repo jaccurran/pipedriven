@@ -19,6 +19,12 @@ const createContactSchema = z.object({
 const queryParamsSchema = z.object({
   page: z.string().transform(val => parseInt(val, 10)).pipe(z.number().min(1)).optional(),
   limit: z.string().transform(val => parseInt(val, 10)).pipe(z.number().min(1).max(100)).optional(),
+  q: z.string().optional(), // Search query
+  filter: z.string().optional(), // Filter by status/source
+  sort: z.enum(['name', 'createdAt', 'warmnessScore', 'lastContacted']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+  country: z.string().optional(), // Filter by organization country
+  sector: z.string().optional(), // Filter by organization industry/sector
   name: z.string().optional(),
   email: z.string().optional(),
   organisation: z.string().optional(),
@@ -49,12 +55,28 @@ export async function GET(request: NextRequest) {
 
     // Create service instance and get contacts
     const contactService = new ContactService()
-    const result = await contactService.getContacts({
-      page: 1,
-      limit: 10,
-      ...validatedParams,
+    
+    // Map query parameters to service options
+    const serviceOptions = {
+      page: validatedParams.page || 1,
+      limit: validatedParams.limit || 20,
       userId: session.user.id,
-    })
+      // Use search query if provided
+      query: validatedParams.q,
+      // Map filter to appropriate service parameters
+      ...(validatedParams.filter && {
+        addedToCampaign: validatedParams.filter === 'campaign' ? true : undefined,
+        // Add more filter mappings as needed
+      }),
+      // Add sorting if provided
+      sortBy: validatedParams.sort,
+      sortOrder: validatedParams.order,
+      // Add organization filters
+      country: validatedParams.country,
+      sector: validatedParams.sector,
+    }
+
+    const result = await contactService.getContacts(serviceOptions)
 
     return NextResponse.json(result)
   } catch {

@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const q = searchParams.get('q') || ''
     const filter = searchParams.get('filter') || ''
+    const country = searchParams.get('country') || ''
+    const sector = searchParams.get('sector') || ''
     const sort = searchParams.get('sort') || 'warmnessScore'
     const order = (searchParams.get('order') || 'asc') as 'asc' | 'desc'
 
@@ -40,10 +42,38 @@ export async function GET(request: NextRequest) {
     if (filter === 'campaign') {
       where.addedToCampaign = true
     }
-    // Add more filters as needed
+    
+    // Handle organization filters
+    if (country || sector) {
+      where.organization = {}
+      if (country) {
+        where.organization.country = { contains: country, mode: 'insensitive' }
+      }
+      if (sector) {
+        where.organization.industry = { contains: sector, mode: 'insensitive' }
+      }
+    }
 
+    // Build orderBy clause
     const orderBy: Prisma.ContactOrderByWithRelationInput = {}
-    orderBy[sort as keyof Prisma.ContactOrderByWithRelationInput] = order
+    
+    // Map sort fields to valid Prisma fields
+    switch (sort) {
+      case 'warmnessScore':
+        orderBy.warmnessScore = order
+        break
+      case 'lastContacted':
+        orderBy.lastContacted = order
+        break
+      case 'createdAt':
+        orderBy.createdAt = order
+        break
+      case 'addedToCampaign':
+        orderBy.addedToCampaign = order
+        break
+      default:
+        orderBy.warmnessScore = order
+    }
 
     // Count total
     const total = await prisma.contact.count({ where })
@@ -53,26 +83,37 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         campaigns: true,
+        activities: {
+          orderBy: { createdAt: 'desc' },
+          take: 1, // Only get the most recent activity for performance
+        },
+        organization: true,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy,
       skip: (page - 1) * limit,
       take: limit,
     });
 
     const result = contacts.map((contact: Prisma.ContactGetPayload<{
-      include: { campaigns: true }
+      include: { campaigns: true; activities: true; organization: true }
     }>) => ({
       id: contact.id,
       name: contact.name,
       email: contact.email,
-      organization: contact.organisation,
-      addedToCampaign: contact.addedToCampaign,
+      phone: contact.phone,
+      organisation: contact.organisation,
+      organizationId: contact.organizationId,
       warmnessScore: contact.warmnessScore,
+      lastContacted: contact.lastContacted,
+      addedToCampaign: contact.addedToCampaign,
+      pipedrivePersonId: contact.pipedrivePersonId,
+      pipedriveOrgId: contact.pipedriveOrgId,
+      lastPipedriveUpdate: contact.lastPipedriveUpdate,
       createdAt: contact.createdAt,
       updatedAt: contact.updatedAt,
-      campaigns: contact.campaigns,
+      userId: contact.userId,
+      activities: contact.activities,
+      organization: contact.organization,
     }));
 
     // Pagination info

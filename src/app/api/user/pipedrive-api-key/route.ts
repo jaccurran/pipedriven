@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { encryptApiKey } from '@/lib/apiKeyEncryption'
 
 const updateApiKeySchema = z.object({
   apiKey: z.string().min(1, 'API key is required'),
@@ -31,10 +32,13 @@ export async function PUT(request: NextRequest) {
 
     const { apiKey } = validation.data
 
-    // Update user's Pipedrive API key
+    // Encrypt API key before saving
+    const encryptedApiKey = await encryptApiKey(apiKey)
+
+    // Update user's Pipedrive API key (encrypted)
     const updatedUser = await prisma.user.update({
       where: { id: session.user.id },
-      data: { pipedriveApiKey: apiKey },
+      data: { pipedriveApiKey: encryptedApiKey },
       select: {
         id: true,
         email: true,

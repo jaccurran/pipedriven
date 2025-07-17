@@ -31,10 +31,18 @@ export async function GET(request: NextRequest) {
         where,
         include: {
           campaigns: true,
+          activities: {
+            orderBy: { createdAt: 'desc' },
+            take: 1, // Only get the most recent activity for performance
+          },
+          organization: true,
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy: [
+          { addedToCampaign: 'desc' },
+          { warmnessScore: 'asc' },
+          { lastContacted: 'asc' },
+          { createdAt: 'desc' }
+        ],
       })
     ])
 
@@ -60,17 +68,25 @@ export async function GET(request: NextRequest) {
     }
 
     const result = contacts.map((contact: Prisma.ContactGetPayload<{
-      include: { campaigns: true }
+      include: { campaigns: true; activities: true; organization: true }
     }>) => ({
       id: contact.id,
       name: contact.name,
       email: contact.email,
-      organization: contact.organisation,
-      addedToCampaign: contact.addedToCampaign,
+      phone: contact.phone,
+      organisation: contact.organisation,
+      organizationId: contact.organizationId,
       warmnessScore: contact.warmnessScore,
+      lastContacted: contact.lastContacted,
+      addedToCampaign: contact.addedToCampaign,
+      pipedrivePersonId: contact.pipedrivePersonId,
+      pipedriveOrgId: contact.pipedriveOrgId,
+      lastPipedriveUpdate: contact.lastPipedriveUpdate,
       createdAt: contact.createdAt,
       updatedAt: contact.updatedAt,
-      campaigns: contact.campaigns,
+      userId: contact.userId,
+      activities: contact.activities,
+      organization: contact.organization,
     }));
 
     return createApiSuccess({

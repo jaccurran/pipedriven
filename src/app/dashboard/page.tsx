@@ -1,52 +1,43 @@
-import { getServerSession } from 'next-auth'
-import { redirect } from 'next/navigation'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { DashboardTabs } from '@/components/dashboard/DashboardTabs'
-import { PipedriveApiKeyForm } from '@/components/PipedriveApiKeyForm'
+import { EnhancedAuthFlow } from "@/components/auth/EnhancedAuthFlow";
+import { DashboardWrapper } from "@/components/dashboard/DashboardWrapper";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { UserRole } from "@prisma/client";
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession(authOptions);
   
   if (!session?.user) {
-    redirect('/auth/signin')
-  }
-
-  // Get user data with Pipedrive API key
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      pipedriveApiKey: true,
-      createdAt: true,
-    },
-  })
-
-  if (!user) {
-    redirect('/auth/signin')
+    return null; // This should be handled by EnhancedAuthFlow
   }
 
   return (
-    <DashboardLayout user={user}>
-      <DashboardTabs user={user} />
-      
-      {/* Pipedrive Integration Section */}
-      <div className="mt-8 bg-white overflow-hidden shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">
-            Pipedrive Integration
-          </h2>
-          
-          <PipedriveApiKeyForm 
-            userId={user.id}
-            currentApiKey={user.pipedriveApiKey}
-          />
-        </div>
-      </div>
-    </DashboardLayout>
-  )
+    <EnhancedAuthFlow>
+      <DashboardLayout 
+        user={{
+          name: session.user.name || 'User',
+          email: session.user.email || '',
+          role: session.user.role || 'CONSULTANT'
+        }}
+      >
+        <DashboardWrapper 
+          user={{
+            id: session.user.id,
+            name: session.user.name || 'User',
+            email: session.user.email || '',
+            role: session.user.role as UserRole || 'CONSULTANT',
+            pipedriveApiKey: session.user.pipedriveApiKey || null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            password: null,
+            lastSyncTimestamp: null,
+            syncStatus: 'IDLE',
+            emailVerified: null,
+            image: null
+          }} 
+        />
+      </DashboardLayout>
+    </EnhancedAuthFlow>
+  );
 } 

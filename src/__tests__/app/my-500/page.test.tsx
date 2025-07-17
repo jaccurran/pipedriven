@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { My500Page } from '@/app/my-500/page'
+import My500Page from '@/app/my-500/page'
 import { getMy500Data } from '@/lib/my-500-data'
 
 // Mock the my-500-data module
@@ -277,5 +277,25 @@ describe('My500Page Server-Side Data Fetching', () => {
       expect(result.error).toBe('Database connection failed')
       expect(result.contacts).toHaveLength(0)
     })
+  })
+})
+
+describe('Sync Progress UI', () => {
+  it('should display the SyncProgressBar when a sync is in progress and update progress', async () => {
+    // Arrange: Render the page and simulate a sync in progress
+    // (This is a high-level test; you may want to use My500Client directly for more control)
+    render(<My500Page />)
+
+    // Simulate clicking the Sync button (find by text or role)
+    const syncButton = await screen.findByRole('button', { name: /sync now/i })
+    syncButton.click()
+
+    // Assert: The progress bar should appear
+    expect(await screen.findByTestId('sync-progress-container')).toBeInTheDocument()
+
+    // Simulate a progress event (this would require mocking EventSource or the progress hook)
+    // For now, just check that the progress bar is present and has the correct initial state
+    expect(screen.getByText(/contacts processed/i)).toBeInTheDocument()
+    // (You would expand this with more detailed progress event simulation if needed)
   })
 }) 

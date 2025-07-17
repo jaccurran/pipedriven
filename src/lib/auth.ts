@@ -3,12 +3,14 @@ import { PrismaAdapter } from '@auth/prisma-adapter'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
 import { verifyPassword } from '@/lib/auth-utils'
+import { createPipedriveService } from '@/server/services/pipedriveService'
 import type { UserRole } from '@prisma/client'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as unknown as NextAuthOptions['adapter'],
   providers: [
     CredentialsProvider({
+      id: 'credentials',
       name: 'credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
@@ -41,7 +43,6 @@ export const authOptions: NextAuthOptions = {
           if (!isValidPassword) {
             return null
           }
-
           return {
             id: user.id,
             email: user.email,
@@ -56,19 +57,14 @@ export const authOptions: NextAuthOptions = {
             pipedriveApiKey: string | null;
           }
         } catch (error) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('❌ Auth error:', error)
-          }
+          console.error('Auth error:', error)
           return null
         }
       }
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔐 signIn callback called:', { userId: user?.id, accountType: account?.type })
-      }
+    async signIn() {
       return true
     },
     async jwt({ token, user }) {
@@ -82,14 +78,6 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔐 session callback called:', { 
-          tokenId: token?.id, 
-          sessionUser: session?.user?.email,
-          hasToken: !!token
-        })
-      }
-      
       // Send properties to the client
       if (token && session.user) {
         session.user.id = token.id as string
@@ -108,9 +96,21 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === 'development', // Only enable debug in development
+  debug: process.env.NODE_ENV === 'development',
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
 }
 
 // Helper function to get current user from session
@@ -158,5 +158,26 @@ export function requireRole(role: UserRole) {
       throw new Error('Insufficient permissions')
     }
     return user
+  }
+}
+
+// Helper function to check API key validity
+export async function checkApiKeyValidity(userId: string): Promise<{ valid: boolean; error?: string }> {
+  try {
+    const pipedriveService = await createPipedriveService(userId)
+    
+    if (!pipedriveService) {
+      return { valid: false, error: 'No API key configured' }
+    }
+
+    const testResult = await pipedriveService.testConnection()
+    
+    return {
+      valid: testResult.success,
+      error: testResult.success ? undefined : testResult.error
+    }
+  } catch (error) {
+    console.error('API key validation error:', error)
+    return { valid: false, error: 'Failed to validate API key' }
   }
 } 

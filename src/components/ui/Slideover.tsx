@@ -31,10 +31,14 @@ const Slideover = React.forwardRef<HTMLDivElement, SlideoverProps>(
       closeOnEscape = true,
       showCloseButton = true,
       ...props
-    }
+    },
+    ref
   ) => {
     const slideoverRef = useRef<HTMLDivElement>(null)
     const previousFocusRef = useRef<HTMLElement | null>(null)
+    
+    // Use forwarded ref or fallback to local ref
+    const finalRef = ref || slideoverRef
 
     // Handle escape key
     useEffect(() => {
@@ -49,7 +53,9 @@ const Slideover = React.forwardRef<HTMLDivElement, SlideoverProps>(
         // Store the currently focused element
         previousFocusRef.current = document.activeElement as HTMLElement
         // Focus the slideover
-        slideoverRef.current?.focus()
+        if (typeof finalRef === 'object' && finalRef.current) {
+          finalRef.current.focus()
+        }
       }
 
       return () => {
@@ -59,7 +65,7 @@ const Slideover = React.forwardRef<HTMLDivElement, SlideoverProps>(
           previousFocusRef.current.focus()
         }
       }
-    }, [isOpen, onClose, closeOnEscape])
+    }, [isOpen, onClose, closeOnEscape, finalRef])
 
     // Prevent body scroll when slideover is open
     useEffect(() => {
@@ -128,7 +134,7 @@ const Slideover = React.forwardRef<HTMLDivElement, SlideoverProps>(
         <div className="fixed inset-0 overflow-hidden">
           <div className="absolute inset-0 overflow-hidden">
             <div
-              ref={slideoverRef}
+              ref={finalRef}
               className={cn(
                 'absolute inset-y-0 flex flex-col bg-white shadow-xl',
                 'transform transition-transform duration-300 ease-in-out',

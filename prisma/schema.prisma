@@ -173,6 +173,7 @@ model SyncHistory {
   id                String   @id @default(cuid())
   userId            String
   syncType          String
+  totalContacts     Int      @default(0)  // Total contacts to be processed
   contactsProcessed Int      @default(0)
   contactsUpdated   Int      @default(0)
   contactsCreated   Int      @default(0)

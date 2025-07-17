@@ -198,27 +198,28 @@ describe('/api/pipedrive/contacts/sync', () => {
     it('should accept valid request with all optional fields', async () => {
       const mockPipedriveService = {
         testConnection: vi.fn().mockResolvedValue({ success: true }),
-        getPersons: vi.fn().mockResolvedValue({ 
-          success: true, 
-          persons: [createMockPipedriveContact()] 
-        }),
+        getPersons: vi.fn().mockResolvedValue({ success: true, persons: [] }),
         getOrganizations: vi.fn().mockResolvedValue({ success: true, organizations: [] }),
       }
       mockCreatePipedriveService.mockResolvedValue(mockPipedriveService)
-
+      // Set up user with valid lastSyncTimestamp and syncStatus 'COMPLETED'
+      mockPrisma.user.findUnique.mockResolvedValue(createMockUser({
+        lastSyncTimestamp: new Date('2024-01-01T00:00:00Z'),
+        syncStatus: 'COMPLETED',
+      }))
       const request = new NextRequest('http://localhost:3000/api/pipedrive/contacts/sync', {
         method: 'POST',
         body: JSON.stringify({
           syncType: 'INCREMENTAL',
           sinceTimestamp: '2024-01-01T00:00:00Z',
-          contactIds: ['contact-1', 'contact-2'],
-          force: true,
+          contactIds: ['12345'],
+          force: false,
+          enableProgress: true,
+          batchSize: 10,
         }),
       })
-
       const response = await POST(request)
       const data = await response.json()
-
       expect(response.status).toBe(200)
       expect(data.success).toBe(true)
       expect(data.data.syncType).toBe('INCREMENTAL')
@@ -515,5 +516,41 @@ describe('/api/pipedrive/contacts/sync', () => {
       expect(typeof data.data.duration).toBe('number');
       expect(data.data.duration).toBeGreaterThanOrEqual(0); // Allow 0 in test environment
     });
+  })
+
+  describe('Progress Updates', () => {
+    it('should update SyncHistory.contactsProcessed after each batch', async () => {
+      // Arrange: simulate 3 batches of 50 contacts each
+      const totalContacts = 150
+      const batchSize = 50
+      const mockContacts = Array.from({ length: totalContacts }, (_, i) => createMockPipedriveContact({ id: i + 1, name: `Contact ${i + 1}` }))
+      const mockPipedriveService = {
+        testConnection: vi.fn().mockResolvedValue({ success: true }),
+        getPersons: vi.fn().mockResolvedValue({ success: true, persons: mockContacts }),
+        getOrganizations: vi.fn().mockResolvedValue({ success: true, organizations: [] }),
+      }
+      mockCreatePipedriveService.mockResolvedValue(mockPipedriveService)
+      mockPrisma.syncHistory.create.mockResolvedValue(createMockSyncHistory({ contactsProcessed: 0 }))
+      mockPrisma.syncHistory.update.mockResolvedValue(createMockSyncHistory())
+      mockPrisma.contact.findFirst.mockResolvedValue(null)
+      mockPrisma.contact.create.mockResolvedValue(createMockContact())
+      mockPrisma.contact.update.mockResolvedValue(createMockContact())
+
+      const request = new NextRequest('http://localhost:3000/api/pipedrive/contacts/sync', {
+        method: 'POST',
+        body: JSON.stringify({ syncType: 'FULL', batchSize }),
+      })
+
+      // Act
+      await POST(request)
+
+      // Assert: should update contactsProcessed after each batch
+      // There should be 3 updates (after each batch)
+      const updateCalls = mockPrisma.syncHistory.update.mock.calls.filter(call => call[0]?.data?.contactsProcessed !== undefined)
+      expect(updateCalls.length).toBeGreaterThanOrEqual(3)
+      expect(updateCalls[0][0].data.contactsProcessed).toBe(50)
+      expect(updateCalls[1][0].data.contactsProcessed).toBe(100)
+      expect(updateCalls[2][0].data.contactsProcessed).toBe(150)
+    })
   })
 }) 

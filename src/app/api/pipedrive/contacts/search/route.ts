@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { PipedriveService } from '@/server/services/pipedriveService';
-
-interface PipedrivePerson {
-  id: number;
-  name: string;
-  email: string[];
-  phone: string[];
-  org_name?: string;
-  org_id?: number;
-  created: string;
-  updated: string;
-}
+import { createPipedriveService } from '@/server/services/pipedriveService';
 
 // In-memory cache for search results (per user)
-const searchCache = new Map<string, { results: PipedrivePerson[]; timestamp: number }>();
+const searchCache = new Map<string, { results: unknown[]; timestamp: number }>();
 const userRateLimits = new Map<string, { count: number; resetTime: number }>();
 
 // Cache TTL: 5 minutes
@@ -27,7 +16,7 @@ const RATE_LIMIT_MAX = 10; // 10 requests per minute
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -46,13 +35,12 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const userId = session.user.email;
+    const userId = session.user.id;
     const cacheKey = `${userId}:${query.toLowerCase().trim()}`;
 
     // Check cache first
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      console.log(`[Pipedrive Search] Cache hit for query: "${query}"`);
       return NextResponse.json({ 
         results: cached.results,
         cached: true 
@@ -78,23 +66,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get user's Pipedrive API key
-    const { prisma } = await import('@/lib/prisma');
-    const user = await prisma.user.findUnique({
-      where: { email: userId },
-      select: { pipedriveApiKey: true }
-    });
-
-    if (!user?.pipedriveApiKey) {
+    // Get user's Pipedrive service
+    const pipedriveService = await createPipedriveService(session.user.id);
+    if (!pipedriveService) {
       return NextResponse.json({ 
-        error: 'Pipedrive API key not configured',
+        error: 'Pipedrive API key not configured or invalid',
         results: [] 
       }, { status: 400 });
     }
 
     // Search Pipedrive
-    console.log(`[Pipedrive Search] Searching for: "${query}"`);
-    const pipedriveService = new PipedriveService(user.pipedriveApiKey);
     const searchTerms = query.split(' ').filter(term => term.length > 0);
     const searchResults = await Promise.all(
       searchTerms.map(async (term: string) => {

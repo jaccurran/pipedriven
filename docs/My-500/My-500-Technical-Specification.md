@@ -16,6 +16,7 @@ This document provides detailed technical specifications for the My-500 screen i
 8. [Error Handling](#error-handling)
 9. [Testing Specifications](#testing-specifications)
 10. [Deployment Specifications](#deployment-specifications)
+11. [Sync Features](#sync-features)
 
 ## API Specifications
 
@@ -135,6 +136,8 @@ interface SyncRequest {
   sinceTimestamp?: string;        // ISO string for incremental sync
   contactIds?: string[];          // Specific contacts for search sync
   force?: boolean;                // Force sync even if no changes
+  enableProgress?: boolean;       // Enable real-time progress updates
+  batchSize?: number;             // Override default batch size
 }
 ```
 
@@ -145,6 +148,7 @@ interface SyncResponse {
   data: {
     syncId: string;
     syncType: string;
+    progressUrl?: string;         // SSE endpoint for progress updates
     results: {
       total: number;
       processed: number;
@@ -152,6 +156,11 @@ interface SyncResponse {
       created: number;
       failed: number;
       errors: SyncError[];
+      batches?: {
+        total: number;
+        completed: number;
+        failed: number;
+      };
     };
     timestamp: string;
     duration: number; // milliseconds
@@ -164,7 +173,9 @@ interface SyncResponse {
 ```json
 {
   "syncType": "INCREMENTAL",
-  "sinceTimestamp": "2024-01-15T09:00:00Z"
+  "sinceTimestamp": "2024-01-15T09:00:00Z",
+  "enableProgress": true,
+  "batchSize": 50
 }
 ```
 
@@ -175,17 +186,69 @@ interface SyncResponse {
   "data": {
     "syncId": "sync-123",
     "syncType": "INCREMENTAL",
+    "progressUrl": "/api/pipedrive/contacts/sync/progress/sync-123",
     "results": {
       "total": 25,
       "processed": 25,
       "updated": 20,
       "created": 5,
       "failed": 0,
-      "errors": []
+      "errors": [],
+      "batches": {
+        "total": 1,
+        "completed": 1,
+        "failed": 0
+      }
     },
     "timestamp": "2024-01-15T10:00:00Z",
     "duration": 1250
   }
+}
+```
+
+### 3. Progress Updates Endpoint
+
+#### GET /api/pipedrive/contacts/sync/progress/{syncId}
+
+**Purpose**: Server-Sent Events stream for real-time progress updates
+
+**Authentication**: Required (NextAuth session)
+
+**Headers**:
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+```
+
+**Event Format**:
+```
+event: progress
+data: {"type":"progress","data":{"syncId":"sync-123","totalContacts":1000,"processedContacts":250,"currentContact":"John Doe","percentage":25,"status":"processing","batchNumber":5,"totalBatches":20}}
+
+event: complete
+data: {"type":"complete","data":{"syncId":"sync-123","totalContacts":1000,"processedContacts":1000,"percentage":100,"status":"completed"}}
+```
+
+### 4. Cancel Sync Endpoint
+
+#### POST /api/pipedrive/contacts/sync/{syncId}/cancel
+
+**Purpose**: Cancel an in-progress sync
+
+**Authentication**: Required (NextAuth session)
+
+**Response**:
+```typescript
+interface CancelSyncResponse {
+  success: boolean;
+  data: {
+    syncId: string;
+    status: 'cancelled';
+    processedContacts: number;
+    totalContacts: number;
+  };
+  error?: string;
 }
 ```
 
@@ -1084,4 +1147,48 @@ export function trackUserAction(action: string, data: any) {
 }
 ```
 
-This technical specification provides a comprehensive foundation for implementing the My-500 screen with all necessary details for development, testing, and deployment. 
+This technical specification provides a comprehensive foundation for implementing the My-500 screen with all necessary details for development, testing, and deployment.
+
+---
+
+## Sync Features
+
+### Current Implementation Status
+
+#### ✅ Completed Features
+- **Robust Sync State Management**: Tracks sync status (`COMPLETED`, `IN_PROGRESS`, `FAILED`)
+- **Force Full Sync Logic**: Automatically forces full sync when previous sync was interrupted
+- **Enhanced Error Handling**: Collects and displays detailed error messages
+- **Sync Status Warnings**: UI warnings for interrupted syncs
+- **Force Full Sync Button**: Manual option to force full sync
+
+#### 🚀 Planned Advanced Features
+- **Real-Time Progress Updates**: Server-Sent Events for live progress
+- **Batch Processing**: Process contacts in configurable batches
+- **Safety Features**: Timeout protection, rate limiting, cancellation
+- **Enhanced UI**: Progress bars, detailed status indicators
+
+### Detailed Specifications
+
+For comprehensive sync feature specifications, see:
+- [My-500 Advanced Sync Features Specification](./My-500-Sync-Advanced-Features-Specification.md)
+
+### Testing Strategy
+
+#### Unit Tests
+- Sync state management logic
+- Force full sync conditions
+- Error handling and collection
+- Batch processing logic
+
+#### Integration Tests
+- End-to-end sync with progress updates
+- Sync cancellation and recovery
+- Large dataset performance
+- Rate limiting compliance
+
+#### Performance Tests
+- 1000+ contact sync performance
+- UI responsiveness during sync
+- Memory usage optimization
+- Network efficiency 

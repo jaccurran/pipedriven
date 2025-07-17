@@ -70,7 +70,7 @@ const formatRelativeTime = (date: Date): string => {
   if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
   if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`
   
-  return new Date(date).toLocaleDateString()
+      return new Date(date).toLocaleDateString('en-GB')
 }
 
 export function ActivityFeed({ className = '', limit = 20 }: ActivityFeedProps) {

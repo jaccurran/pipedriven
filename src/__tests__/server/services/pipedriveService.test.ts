@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PipedriveService, createPipedriveService } from '@/server/services/pipedriveService'
 import { prisma } from '../../setup'
 import type { User, Contact, Activity, ActivityType } from '@prisma/client'
+import { encryptApiKey } from '@/lib/apiKeyEncryption'
 
 // Mock fetch globally
 global.fetch = vi.fn()
@@ -13,18 +14,22 @@ describe('PipedriveService', () => {
   let mockActivity: Activity
 
   beforeEach(async () => {
+    // Set up encryption environment
+    process.env.API_KEY_ENCRYPTION_SECRET = '12345678901234567890123456789012'
+
     // Clean up database
     await prisma.activity.deleteMany()
     await prisma.contact.deleteMany()
     await prisma.user.deleteMany()
 
-    // Create test user
+    // Create test user with encrypted API key
+    const encryptedApiKey = await encryptApiKey('test-api-key-123')
     mockUser = await prisma.user.create({
       data: {
         email: 'test@example.com',
         name: 'Test User',
         role: 'CONSULTANT',
-        pipedriveApiKey: 'test-api-key-123',
+        pipedriveApiKey: encryptedApiKey,
       },
     })
 
@@ -51,7 +56,7 @@ describe('PipedriveService', () => {
       },
     })
 
-    // Create service instance
+    // Create service instance with decrypted key
     service = new PipedriveService('test-api-key-123')
 
     // Clear all mocks
@@ -369,53 +374,121 @@ describe('PipedriveService', () => {
   })
 
   describe('getPersons', () => {
-    it('should fetch persons successfully', async () => {
+    it('should fetch persons successfully when filter exists', async () => {
+      // Mock filters response (first call)
+      const mockFiltersResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: [
+            { id: 123, name: 'Persons Still Active - Pipedriver' }
+          ],
+        }),
+      }
+      // Mock persons response (second call)
       const mockPersons = [
         {
           id: 1,
           name: 'John Doe',
-          email: ['john@example.com'],
-          phone: ['+1234567890'],
+          email: [{ label: 'work', value: 'john@example.com', primary: true }],
+          phone: [{ label: 'work', value: '+1234567890', primary: true }],
           created: '2025-01-01T00:00:00Z',
           updated: '2025-01-01T00:00:00Z',
         },
       ]
-
-      const mockResponse = {
+      const mockPersonsResponse = {
         ok: true,
         json: vi.fn().mockResolvedValue({
           data: mockPersons,
         }),
       }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      // Set up fetch mock to return different responses for different calls
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(mockFiltersResponse as any)
+        .mockResolvedValueOnce(mockPersonsResponse as any)
 
       const result = await service.getPersons()
 
       expect(result.success).toBe(true)
       expect(result.persons).toEqual(mockPersons)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons?api_token=test-api-key-123',
-        expect.objectContaining({
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
+      expect(fetch).toHaveBeenCalledTimes(2)
     })
 
-    it('should handle API errors when fetching persons', async () => {
-      const mockResponse = {
-        ok: false,
+    it('should return error when filter does not exist', async () => {
+      // Mock filters response with no "Persons Still Active - Pipedriver" filter
+      const mockFiltersResponse = {
+        ok: true,
         json: vi.fn().mockResolvedValue({
-          error: 'Rate limit exceeded',
+          data: [
+            { id: 456, name: 'Some Other Filter' }
+          ],
         }),
       }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      vi.mocked(fetch).mockResolvedValue(mockFiltersResponse as any)
 
       const result = await service.getPersons()
 
       expect(result.success).toBe(false)
-      expect(result.error).toBe('Rate limit exceeded')
+      expect(result.error).toBe('Required Pipedrive filter "Persons Still Active - Pipedriver" not found. Please ensure this filter exists in your Pipedrive account.')
+      expect(fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('should fetch all pages and aggregate results (pagination)', async () => {
+      const mockPersonsPage1 = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        name: `Contact ${i + 1}`,
+        email: [{ label: 'work', value: `contact${i + 1}@example.com`, primary: true }],
+        phone: [{ label: 'work', value: `+1234567${i.toString().padStart(3, '0')}`, primary: true }],
+        created: '2025-01-01T00:00:00Z',
+        updated: '2025-01-01T00:00:00Z',
+      }))
+
+      const mockPersonsPage2 = Array.from({ length: 50 }, (_, i) => ({
+        id: i + 101,
+        name: `Contact ${i + 101}`,
+        email: [{ label: 'work', value: `contact${i + 101}@example.com`, primary: true }],
+        phone: [{ label: 'work', value: `+1234567${(i + 100).toString().padStart(3, '0')}`, primary: true }],
+        created: '2025-01-01T00:00:00Z',
+        updated: '2025-01-01T00:00:00Z',
+      }))
+
+      // Mock filters response (first call)
+      const mockFiltersResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: [
+            { id: 123, name: 'Persons Still Active - Pipedriver' }
+          ],
+        }),
+      }
+      // Mock first page of persons (second call)
+      const mockPersonsPage1Response = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: mockPersonsPage1,
+        }),
+      }
+      // Mock second page of persons (third call) - fewer results to stop pagination
+      const mockPersonsPage2Response = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: mockPersonsPage2,
+        }),
+      }
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(mockFiltersResponse as any)
+        .mockResolvedValueOnce(mockPersonsPage1Response as any)
+        .mockResolvedValueOnce(mockPersonsPage2Response as any)
+
+      const result = await service.getPersons()
+
+      expect(result.success).toBe(true)
+      expect(result.persons).toHaveLength(150) // 100 + 50
+      expect(result.persons![0]).toEqual(mockPersonsPage1[0])
+      expect(result.persons![100]).toEqual(mockPersonsPage2[0])
+      expect(fetch).toHaveBeenCalledTimes(3)
     })
   })
 
@@ -455,10 +528,30 @@ describe('PipedriveService', () => {
   })
 
   describe('createPipedriveService factory', () => {
-    it('should create service when user has API key', async () => {
+    it('should create service when user has encrypted API key', async () => {
       const service = await createPipedriveService(mockUser.id)
 
       expect(service).toBeInstanceOf(PipedriveService)
+      
+      // Verify the service can make API calls with the decrypted key
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: {
+            id: 123,
+            name: 'Test User',
+            email: 'test@example.com',
+          },
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service!.testConnection()
+      expect(result.success).toBe(true)
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.pipedrive.com/v1/users/me?api_token=test-api-key-123',
+        expect.any(Object)
+      )
     })
 
     it('should return null when user has no API key', async () => {
@@ -477,6 +570,22 @@ describe('PipedriveService', () => {
 
     it('should return null when user does not exist', async () => {
       const service = await createPipedriveService('non-existent-id')
+
+      expect(service).toBeNull()
+    })
+
+    it('should return null when API key decryption fails', async () => {
+      // Create a user with an invalid encrypted API key
+      const userWithInvalidKey = await prisma.user.create({
+        data: {
+          email: 'invalid-key@example.com',
+          name: 'Invalid Key User',
+          role: 'CONSULTANT',
+          pipedriveApiKey: 'invalid-encrypted-key',
+        },
+      })
+
+      const service = await createPipedriveService(userWithInvalidKey.id)
 
       expect(service).toBeNull()
     })

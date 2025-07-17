@@ -5,17 +5,24 @@ import { useSession } from 'next-auth/react'
 import { useDebouncedCallback } from 'use-debounce'
 import type { ContactWithActivities } from '@/lib/my-500-data'
 import { useMy500Contacts, useSyncContacts, useSyncStatus } from '@/hooks/useMy500Contacts'
+import { useMy500Filters } from '@/hooks/useMy500Filters'
 import {
   getContactPriority,
   getContactStatus,
   needsAttention
 } from '@/lib/my-500-data'
+import {
+  getDaysSinceLastContact,
+  getActivityStatusColor,
+  getPriorityColor
+} from '@/lib/contactSorting'
 import { ActivityForm } from '@/components/activities/ActivityForm'
 import { Button, Modal, Input, Select } from '@/components/ui'
 import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
 import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 import { QuickActionToggle } from '@/components/ui/QuickActionToggle'
 import { type User } from '@prisma/client'
+import { SyncProgressBar } from '@/components/contacts/SyncProgressBar'
 
 interface PaginationInfo {
   page: number
@@ -32,6 +39,7 @@ interface SyncStatus {
   syncedContacts: number
   pendingSync: boolean
   syncInProgress: boolean
+  syncStatus?: 'COMPLETED' | 'IN_PROGRESS' | 'FAILED' | null
 }
 
 interface My500ClientProps {
@@ -46,22 +54,27 @@ export function My500Client({
   initialPagination, 
   initialSyncStatus
 }: My500ClientProps) {
+
   const { data: session } = useSession()
   
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
-  const [filter, setFilter] = useState('')
+  const [filter, setFilter] = useState<string | undefined>(undefined)
+  const [country, setCountry] = useState<string | undefined>(undefined)
+  const [sector, setSector] = useState<string | undefined>(undefined)
   const [sort, setSort] = useState('warmnessScore')
   const [order, setOrder] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1)
   
   // React Query hooks with error handling
-  const { isLoading, error: contactsError } = useMy500Contacts({
+  const { data: contactsData, isLoading, error: contactsError } = useMy500Contacts({
     search: debouncedSearchTerm,
     page,
     limit: 20,
-    filter,
+    filter: filter || undefined,
+    country: country || undefined,
+    sector: sector || undefined,
     sort,
     order,
   })
@@ -69,21 +82,37 @@ export function My500Client({
   const syncMutation = useSyncContacts()
   const { error: syncStatusError } = useSyncStatus()
   
-  // Extract data with fallbacks and defensive checks
-  const contacts = Array.isArray(initialContacts) ? initialContacts : []
+  // Fetch dynamic filters from Pipedrive
+  const { data: filtersData, isLoading: filtersLoading } = useMy500Filters()
   
-  const pagination = initialPagination || {
+  // Extract data with fallbacks and defensive checks
+  const contacts = React.useMemo(() => {
+    const dataContacts = contactsData?.data?.contacts
+    const fallbackContacts = Array.isArray(initialContacts) ? initialContacts : []
+    const result = Array.isArray(dataContacts) ? dataContacts : fallbackContacts
+    
+
+    
+    return result
+  }, [contactsData?.data?.contacts, initialContacts])
+  
+  // Ensure contacts is always an array
+  const safeContacts = Array.isArray(contacts) ? contacts : []
+  
+
+  
+  const pagination = contactsData?.data?.pagination || initialPagination || {
     page: 1,
     limit: 20,
-    total: contacts.length,
+    total: safeContacts.length,
     totalPages: 1,
     hasMore: false,
     hasPrev: false,
   }
   
-  const syncStatus = initialSyncStatus || {
+  const syncStatus = contactsData?.data?.syncStatus || initialSyncStatus || {
     lastSync: null,
-    totalContacts: contacts.length,
+    totalContacts: safeContacts.length,
     syncedContacts: 0,
     pendingSync: false,
     syncInProgress: false,
@@ -101,6 +130,20 @@ export function My500Client({
   
   // Loading states from React Query
   const isSyncing = syncMutation.isPending
+
+  // Add state for sync progress bar
+  const [syncId, setSyncId] = useState<string | null>(null)
+  const [showProgressBar, setShowProgressBar] = useState(false)
+
+  // Utility function to check if contact was recently contacted
+  const isRecentlyContacted = useCallback((contact: ContactWithActivities): boolean => {
+    if (!contact.lastContacted) return false
+    const now = new Date()
+    const lastContacted = new Date(contact.lastContacted)
+    const diffTime = now.getTime() - lastContacted.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays <= 7 // Consider "recently contacted" if within 7 days
+  }, [])
 
   // Debounced search
   const debouncedSearch = useDebouncedCallback(
@@ -120,7 +163,19 @@ export function My500Client({
 
   // Handle filter change
   const handleFilterChange = useCallback((newFilter: string) => {
-    setFilter(newFilter)
+    setFilter(newFilter || undefined)
+    setPage(1)
+  }, [])
+
+  // Handle country filter change
+  const handleCountryChange = useCallback((newCountry: string) => {
+    setCountry(newCountry || undefined)
+    setPage(1)
+  }, [])
+
+  // Handle sector filter change
+  const handleSectorChange = useCallback((newSector: string) => {
+    setSector(newSector || undefined)
     setPage(1)
   }, [])
 
@@ -137,31 +192,62 @@ export function My500Client({
   }, [])
 
   // Sync contacts with Pipedrive
-  const handleSync = useCallback(async () => {
+  const handleSync = useCallback(async (forceFullSync = false) => {
     if (isSyncing) return
     
     let syncData: { syncType: 'INCREMENTAL' | 'FULL'; sinceTimestamp?: string }
     
-    // Determine sync type based on whether we have a last sync time
-    if (syncStatus.lastSync) {
-      // Incremental sync if we have a last sync timestamp
+    // Determine sync type based on sync status and last sync time
+    // Force full sync if:
+    // 1. User explicitly requests full sync
+    // 2. No last sync timestamp (first time)
+    // 3. Previous sync was interrupted (syncStatus indicates failure/incomplete)
+    // 4. Database sync status indicates failure or in progress
+    const shouldForceFullSync = forceFullSync || 
+                               !syncStatus.lastSync || 
+                               syncStatus.syncInProgress || 
+                               syncStatus.pendingSync ||
+                               syncStatus.syncStatus === 'FAILED' ||
+                               syncStatus.syncStatus === 'IN_PROGRESS'
+    
+    if (shouldForceFullSync) {
+      // Full sync to ensure we don't miss any contacts
+      syncData = { syncType: 'FULL' }
+    } else {
+      // Incremental sync if we have a successful last sync timestamp
       syncData = { 
         syncType: 'INCREMENTAL',
-        sinceTimestamp: syncStatus.lastSync
+        sinceTimestamp: syncStatus.lastSync || undefined
       }
-    } else {
-      // Full sync if no last sync timestamp (first time)
-      syncData = { syncType: 'FULL' }
     }
     
     try {
       const result = await syncMutation.mutateAsync(syncData)
+      // Extract syncId from result if available
+      if (result.success && result.data?.syncId) {
+        setSyncId(typeof result.data.syncId === 'string' ? result.data.syncId : null)
+        setShowProgressBar(true)
+      }
       
       if (result.success && result.data?.results) {
-        const results = result.data.results as { updated: number; created: number }
-        setSuccessMessage(`Sync completed: ${results.updated} updated, ${results.created} created`)
+        const results = result.data.results as { 
+          updated: number; 
+          created: number; 
+          failed: number; 
+          errors: string[] 
+        }
+        
+        // Build clean stats message
+        let message = `Sync completed: ${results.updated} updated, ${results.created} created`
+        
+        // Add failure count if there were failures
+        if (results.failed > 0) {
+          message += `, ${results.failed} failed`
+        }
+        
+        setSuccessMessage(message)
         setShowSuccessMessage(true)
-        setTimeout(() => setShowSuccessMessage(false), 3000)
+        setTimeout(() => setShowSuccessMessage(false), 3000) // Show for 3 seconds
       }
     } catch (error) {
       console.error('Sync error:', error)
@@ -169,9 +255,15 @@ export function My500Client({
       setSuccessMessage(errorMessage)
       setShowSuccessMessage(true)
       setTimeout(() => setShowSuccessMessage(false), 5000) // Show for longer for error messages
+      setShowProgressBar(false)
     }
-  }, [isSyncing, syncStatus.lastSync, syncMutation])
+  }, [isSyncing, syncStatus.lastSync, syncStatus.pendingSync, syncStatus.syncInProgress, syncStatus.syncStatus, syncMutation])
 
+  // Hide progress bar on completion
+  const handleProgressComplete = useCallback(() => {
+    setShowProgressBar(false)
+    setSyncId(null)
+  }, [])
 
 
   // Action handlers
@@ -291,45 +383,18 @@ export function My500Client({
     setSelectedContact(null)
   }, [])
 
-  // Utility functions
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'hot': return 'bg-red-100 text-red-800'
-      case 'warm': return 'bg-orange-100 text-orange-800'
-      case 'cold': return 'bg-blue-100 text-blue-800'
-      case 'lost': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }, [])
 
-  const getPriorityColor = useCallback((priority: string) => {
-    switch (priority) {
-      case 'high': return 'border-red-200 text-red-700'
-      case 'medium': return 'border-orange-200 text-orange-700'
-      case 'low': return 'border-blue-200 text-blue-700'
-      default: return 'border-gray-200 text-gray-700'
-    }
-  }, [])
 
-  const getDaysSinceContact = useCallback((contact: ContactWithActivities): number | null => {
-    if (!contact.lastContacted) return null
-    const now = new Date()
-    const lastContacted = new Date(contact.lastContacted)
-    const diffTime = Math.abs(now.getTime() - lastContacted.getTime())
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  }, [])
 
-  const isRecentlyContacted = useCallback((contact: ContactWithActivities): boolean => {
-    if (!contact.lastContacted) return false
-    const now = new Date()
-    const lastContacted = new Date(contact.lastContacted)
-    const diffTime = now.getTime() - lastContacted.getTime()
-    const diffHours = diffTime / (1000 * 60 * 60)
-    return diffHours <= 24
-  }, [])
 
   return (
     <div className="w-full">
+      {/* Sync Progress Bar */}
+      {showProgressBar && syncId && (
+        <div className="mb-4">
+          <SyncProgressBar syncId={syncId} onComplete={handleProgressComplete} />
+        </div>
+      )}
       {/* Error Alert */}
       {(contactsError || syncStatusError) && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
@@ -360,8 +425,14 @@ export function My500Client({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <p className="text-sm text-gray-600">
-            {pagination.total} contacts • Last sync: {syncStatus.lastSync ? new Date(syncStatus.lastSync).toLocaleDateString() : 'Never'}
+            {pagination.total} contacts • Last sync: {syncStatus.lastSync ? new Date(syncStatus.lastSync).toLocaleDateString('en-GB') : 'Never'}
           </p>
+          {/* Show sync status warnings */}
+          {(syncStatus.syncInProgress || syncStatus.pendingSync || syncStatus.syncStatus === 'FAILED' || syncStatus.syncStatus === 'IN_PROGRESS') && (
+            <p className="text-sm text-amber-600 mt-1">
+              ⚠️ Previous sync was interrupted. Next sync will be a full import to ensure no contacts are missed.
+            </p>
+          )}
         </div>
         <div className="mt-4 sm:mt-0 flex gap-2">
           <Button
@@ -369,7 +440,22 @@ export function My500Client({
             disabled={isSyncing}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
-            {isSyncing ? 'Syncing...' : 'Sync Now'}
+            {isSyncing ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Syncing...
+              </div>
+            ) : (
+              'Sync Now'
+            )}
+          </Button>
+          <Button
+            onClick={() => handleSync(true)} // Force full sync
+            disabled={isSyncing}
+            variant="outline"
+            className="text-gray-600 border-gray-300 hover:bg-gray-50"
+          >
+            {isSyncing ? 'Syncing...' : 'Force Full Sync'}
           </Button>
         </div>
       </div>
@@ -377,7 +463,7 @@ export function My500Client({
       {/* Search and Filters */}
       <div className="mb-6 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0" style={{ flexBasis: '150%' }}>
             <Input
               type="text"
               placeholder="Search contacts by name, email, or organization..."
@@ -394,6 +480,32 @@ export function My500Client({
               { value: 'campaign', label: 'Campaign Contacts' }
             ]}
             className="w-full sm:w-48"
+          />
+          <Select
+            value={country}
+            onChange={(value) => handleCountryChange(value)}
+            options={[
+              { value: '', label: 'All Countries' },
+              ...(filtersData?.countries || []).map(country => ({
+                value: country,
+                label: country
+              }))
+            ]}
+            className="w-full sm:w-48"
+            disabled={filtersLoading}
+          />
+          <Select
+            value={sector}
+            onChange={(value) => handleSectorChange(value)}
+            options={[
+              { value: '', label: 'All Sectors' },
+              ...(filtersData?.sectors || []).map(sector => ({
+                value: sector,
+                label: sector
+              }))
+            ]}
+            className="w-full sm:w-48"
+            disabled={filtersLoading}
           />
           <Select
             value={`${sort}-${order}`}
@@ -414,6 +526,25 @@ export function My500Client({
         </div>
       </div>
 
+      {/* Error States */}
+      {contactsError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error loading contacts</h3>
+              <div className="mt-2 text-sm text-red-700">
+                {contactsError.message || 'An unexpected error occurred'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Loading States */}
       {isLoading && (
         <div className="text-center py-8">
@@ -427,7 +558,7 @@ export function My500Client({
       {/* Contact List */}
       {!isLoading && (
         <>
-          {contacts.length === 0 ? (
+          {safeContacts.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-gray-400 mb-4">
                 <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -441,10 +572,12 @@ export function My500Client({
             </div>
           ) : (
             <div className="space-y-4">
-              {contacts.map((contact: ContactWithActivities) => {
+              {safeContacts.map((contact: ContactWithActivities) => {
+
+                
                 const status = getContactStatus(contact)
                 const priority = getContactPriority(contact)
-                const daysSinceContact = getDaysSinceContact(contact)
+                const daysSinceContact = getDaysSinceLastContact(contact)
                 const attentionNeeded = needsAttention(contact)
                 
                 return (
@@ -456,7 +589,7 @@ export function My500Client({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-lg text-gray-900">{contact.name}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${getStatusColor(status)}`}>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${getActivityStatusColor(status)}`}>
                             {status}
                           </span>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase border ${getPriorityColor(priority)}`}>
@@ -475,7 +608,7 @@ export function My500Client({
                           </div>
                         )}
                         
-                        {contact.activities.length > 0 && (
+                        {Array.isArray(contact.activities) && contact.activities.length > 0 && (
                           <div className="mt-1 text-xs text-gray-400">
                             Last activity: {contact.activities[0].type} - {contact.activities[0].subject}
                           </div>
@@ -486,7 +619,6 @@ export function My500Client({
                         <QuickActionButton
                           type="EMAIL"
                           onClick={(type) => handlePrimaryAction(contact, type)}
-                          disabled={!contact.email}
                           contactName={contact.name}
                         />
                         <QuickActionButton

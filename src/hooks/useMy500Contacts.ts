@@ -16,6 +16,7 @@ interface SyncStatus {
   syncedContacts: number
   pendingSync: boolean
   syncInProgress: boolean
+  syncStatus?: 'COMPLETED' | 'IN_PROGRESS' | 'FAILED' | null
 }
 
 interface My500Response {
@@ -32,6 +33,8 @@ interface SearchParams {
   page?: number
   limit?: number
   filter?: string
+  country?: string
+  sector?: string
   sort?: string
   order?: 'asc' | 'desc'
 }
@@ -43,6 +46,8 @@ async function fetchMy500Contacts(params: SearchParams = {}): Promise<My500Respo
     limit: (params.limit || 20).toString(),
     q: params.search || '',
     filter: params.filter || '',
+    country: params.country || '',
+    sector: params.sector || '',
     sort: params.sort || 'warmnessScore',
     order: params.order || 'asc',
   })

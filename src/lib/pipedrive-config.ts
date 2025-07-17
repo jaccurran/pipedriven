@@ -63,7 +63,7 @@ const defaultConfig: PipedriveConfig = {
   enableRetries: true,
   enableRateLimiting: true,
   enableDataSanitization: true,
-  enableDetailedLogging: true,
+  enableDetailedLogging: false, // Disabled by default
 }
 
 /**
@@ -99,7 +99,7 @@ function loadConfigFromEnv(): Partial<PipedriveConfig> {
     enableRetries: process.env.PIPEDRIVE_ENABLE_RETRIES !== 'false',
     enableRateLimiting: process.env.PIPEDRIVE_ENABLE_RATE_LIMITING !== 'false',
     enableDataSanitization: process.env.PIPEDRIVE_ENABLE_DATA_SANITIZATION !== 'false',
-    enableDetailedLogging: process.env.PIPEDRIVE_ENABLE_DETAILED_LOGGING !== 'false',
+    enableDetailedLogging: process.env.PIPEDRIVE_ENABLE_DETAILED_LOGGING === 'true',
   }
 }
 
@@ -170,22 +170,4 @@ export function validatePipedriveConfig(): string[] {
   }
   
   return errors
-}
-
-/**
- * Log configuration (for debugging)
- */
-export function logPipedriveConfig(): void {
-  if (pipedriveConfig.enableDetailedLogging) {
-    console.log('Pipedrive Configuration:', {
-      baseUrl: pipedriveConfig.baseUrl,
-      apiVersion: pipedriveConfig.apiVersion,
-      timeout: pipedriveConfig.timeout,
-      maxRetries: pipedriveConfig.maxRetries,
-      retryDelay: pipedriveConfig.retryDelay,
-      enableRetries: pipedriveConfig.enableRetries,
-      enableRateLimiting: pipedriveConfig.enableRateLimiting,
-      enableDataSanitization: pipedriveConfig.enableDataSanitization,
-    })
-  }
 } 

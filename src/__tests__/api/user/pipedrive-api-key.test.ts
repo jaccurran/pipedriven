@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { prisma } from '../../setup'
 import type { User } from '@prisma/client'
+import { decryptApiKey } from '@/lib/apiKeyEncryption'
 
 // Mock NextAuth
 vi.mock('next-auth', () => ({
@@ -25,10 +26,11 @@ describe('Pipedrive API Key API Route', () => {
     })
 
     vi.clearAllMocks()
+    process.env.API_KEY_ENCRYPTION_SECRET = '12345678901234567890123456789012'
   })
 
   describe('PUT /api/user/pipedrive-api-key', () => {
-    it('should update user Pipedrive API key when authenticated', async () => {
+    it('should update user Pipedrive API key when authenticated and store it encrypted', async () => {
       const { getServerSession } = await import('next-auth')
       vi.mocked(getServerSession).mockResolvedValue({
         user: { id: mockUser.id, email: mockUser.email },
@@ -38,7 +40,7 @@ describe('Pipedrive API Key API Route', () => {
       const { PUT } = await import('@/app/api/user/pipedrive-api-key/route')
       const request = new NextRequest('http://localhost:3000/api/user/pipedrive-api-key', {
         method: 'PUT',
-        body: JSON.stringify({ apiKey: 'test-api-key-123' }),
+        body: JSON.stringify({ apiKey: 'test-api-key-1234567890abcdef' }),
       })
 
       const response = await PUT(request)
@@ -48,11 +50,16 @@ describe('Pipedrive API Key API Route', () => {
       expect(data.message).toBe('Pipedrive API key updated successfully')
       expect(data.user.hasApiKey).toBe(true)
 
-      // Verify database was updated
+      // Verify database was updated and key is encrypted
       const updatedUser = await prisma.user.findUnique({
         where: { id: mockUser.id },
       })
-      expect(updatedUser?.pipedriveApiKey).toBe('test-api-key-123')
+      expect(updatedUser?.pipedriveApiKey).toBeDefined()
+      expect(updatedUser?.pipedriveApiKey).not.toBe('test-api-key-1234567890abcdef')
+
+      // Decrypt and verify
+      const decrypted = await decryptApiKey(updatedUser!.pipedriveApiKey!)
+      expect(decrypted).toBe('test-api-key-1234567890abcdef')
     })
 
     it('should return 401 when not authenticated', async () => {

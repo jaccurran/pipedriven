@@ -37,19 +37,13 @@ export async function POST(
 
     const { id: campaignId } = await params
 
-    // Check if campaign exists and user has access
+    // Check if campaign exists
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      include: { users: true },
     })
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
-    }
-
-    const hasAccess = campaign.users.some(user => user.id === session.user.id)
-    if (!hasAccess) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Add contacts to campaign
@@ -102,19 +96,13 @@ export async function DELETE(
 
     const { id: campaignId } = await params
 
-    // Check if campaign exists and user has access
+    // Check if campaign exists
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      include: { users: true },
     })
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
-    }
-
-    const hasAccess = campaign.users.some(user => user.id === session.user.id)
-    if (!hasAccess) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Remove contacts from campaign

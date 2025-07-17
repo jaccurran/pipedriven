@@ -56,12 +56,6 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
   if (!campaign) {
     notFound()
     return null
-  } else {
-    const hasAccess = Array.isArray(campaign.users) && campaign.users.some(campaignUser => campaignUser.id === user.id)
-    if (!hasAccess) {
-      notFound()
-      return null
-    }
   }
 
   // const formatCurrency = (amount: number) => {

@@ -11,12 +11,10 @@ export async function POST(request: NextRequest) {
   try {
     // Parse and validate request body
     const body = await request.json()
-    console.log('Test connection request body:', { ...body, apiKey: body.apiKey ? '***' : 'undefined' })
     
     const validation = testConnectionSchema.safeParse(body)
     
     if (!validation.success) {
-      console.log('Validation failed:', validation.error.errors)
       return NextResponse.json(
         { error: 'Invalid request data', details: validation.error.errors },
         { status: 400 }
@@ -24,7 +22,6 @@ export async function POST(request: NextRequest) {
     }
 
     const { apiKey } = validation.data
-    console.log('API key length:', apiKey.length)
 
     // Test Pipedrive API connection using query parameter authentication
     const response = await fetch(`https://api.pipedrive.com/v1/users/me?api_token=${apiKey}`, {
@@ -34,9 +31,6 @@ export async function POST(request: NextRequest) {
     })
 
     const responseTime = Date.now() - startTime
-    console.log('Pipedrive API response status:', response.status)
-    console.log('Pipedrive API response time:', responseTime + 'ms')
-    console.log('Pipedrive API response headers:', Object.fromEntries(response.headers.entries()))
 
     // Extract rate limiting information
     const rateLimitInfo = {
@@ -47,7 +41,6 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.log('Pipedrive API error:', errorData)
       
       return NextResponse.json(
         { 

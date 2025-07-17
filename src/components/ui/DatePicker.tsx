@@ -36,7 +36,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
     id,
     name,
     ...props
-  }) => {
+  }, ref) => {
     // Filter out props that shouldn't be passed to DOM elements
     const { ...domProps } = props as Omit<typeof props, 'placeholderText'>
 
@@ -231,7 +231,15 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
         )}
         <div className="mt-2">
           <div
-            ref={datePickerRef}
+            ref={(node) => {
+              // Handle both the forwarded ref and the internal ref
+              if (typeof ref === 'function') {
+                ref(node)
+              } else if (ref) {
+                ref.current = node
+              }
+              datePickerRef.current = node
+            }}
             className={containerClasses}
             onKeyDown={handleKeyDown}
             role="combobox"

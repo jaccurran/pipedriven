@@ -223,7 +223,6 @@ export function ActivityForm({
               <DatePicker
                 id="activity-due-date"
                 value={formData.dueDate || null}
-                selected={formData.dueDate}
                 onChange={(date) => handleInputChange('dueDate', date)}
                 placeholderText="Select due date"
                 className="w-full"
