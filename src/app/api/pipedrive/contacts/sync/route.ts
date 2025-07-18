@@ -35,6 +35,9 @@ function extractPrimaryValue(field: unknown): string | null {
   return null
 }
 
+// Calculate Warmness Score based on specified criteria
+// Warmness score calculation is handled in the sync logic
+
 const errorRecoveryService = new ErrorRecoveryService()
 
 export async function POST(request: NextRequest) {
@@ -140,6 +143,18 @@ export async function POST(request: NextRequest) {
 
       // 7. Perform sync based on effective type with timeout
       const syncPromise = (async () => {
+        // Immediately update progress to show sync has started
+        if (enableProgress) {
+          await prisma.syncHistory.update({
+            where: { id: syncHistory.id },
+            data: { 
+              status: 'PENDING',
+              contactsProcessed: 0,
+              totalContacts: 0 // Will be updated when we know the total
+            }
+          })
+        }
+
         if (effectiveSyncType === 'FULL') {
           return await performFullSync(pipedriveService, session.user.id, batchSize, syncHistory.id)
         } else if (effectiveSyncType === 'INCREMENTAL') {
@@ -277,11 +292,14 @@ async function performFullSync(pipedriveService: PipedriveService, userId: strin
     throw new Error(pipedriveResponse.error || 'Failed to fetch contacts from Pipedrive')
   }
 
-  // Update sync history with total contacts count
+  // Update sync history with total contacts count and start progress tracking immediately
   if (syncId) {
     await prisma.syncHistory.update({
       where: { id: syncId },
-      data: { totalContacts: pipedriveContacts.length }
+      data: { 
+        totalContacts: pipedriveContacts.length,
+        status: 'PENDING' // Ensure status is set to trigger progress bar
+      }
     })
   }
 
@@ -308,32 +326,8 @@ async function performFullSync(pipedriveService: PipedriveService, userId: strin
   let batchesCompleted = 0
   let batchesFailed = 0
 
-  // Process organizations first to create/link them
+  // Process organizations individually as we process each contact
   const organizationMap = new Map<string, Organization>()
-  const contactsWithOrgs = pipedriveContacts.filter(contact => contact.org_id)
-  if (contactsWithOrgs.length > 0) {
-    const orgResponse = await pipedriveService.getOrganizations()
-    if (orgResponse.success && orgResponse.organizations) {
-      for (const org of orgResponse.organizations) {
-        // Add null check for org
-        if (!org || !org.id) {
-          continue
-        }
-        
-        try {
-          const organization = await OrganizationService.findOrCreateOrganization({
-            name: org.name || 'Unknown Organization',
-            pipedriveOrgId: org.id.toString(),
-            address: org.address
-          })
-          organizationMap.set(org.id.toString(), organization as Organization)
-        } catch (orgError) {
-          console.error('Error processing organization:', org.id, orgError)
-          // Continue processing other organizations
-        }
-      }
-    }
-  }
 
   // Process contacts in batches
   const totalBatches = Math.ceil(pipedriveContacts.length / batchSize)
@@ -349,7 +343,7 @@ async function performFullSync(pipedriveService: PipedriveService, userId: strin
     // Process each contact in the batch
     for (const pipedriveContact of batch) {
       try {
-        const contactData = await mapPipedriveContact(pipedriveContact, organizationMap, userId)
+        const contactData = await mapPipedriveContact(pipedriveContact, organizationMap, userId, pipedriveService)
         
         // Validate contact data before database operation
         if (typeof contactData.email !== 'string' && contactData.email !== null) {
@@ -378,6 +372,22 @@ async function performFullSync(pipedriveService: PipedriveService, userId: strin
             data: contactData
           })
           contactsCreated++
+        }
+
+        // Update progress after each contact for more responsive progress bar
+        if (syncId) {
+          await prisma.syncHistory.update({
+            where: { id: syncId },
+            data: {
+              contactsProcessed: contactsCreated + contactsUpdated + contactsFailed,
+              contactsCreated,
+              contactsUpdated,
+              contactsFailed,
+            }
+          })
+          
+          // Add a small delay to ensure progress is visible
+          await new Promise(resolve => setTimeout(resolve, 50))
         }
       } catch (contactError) {
         console.error('Error processing contact:', pipedriveContact.id, contactError)
@@ -411,16 +421,18 @@ async function performFullSync(pipedriveService: PipedriveService, userId: strin
     
     // Update progress after each batch
     if (syncId) {
-      const contactsProcessedSoFar = Math.min((i + 1) * batchSize, pipedriveContacts.length)
       await prisma.syncHistory.update({
         where: { id: syncId },
         data: {
-          contactsProcessed: contactsProcessedSoFar,
+          contactsProcessed: contactsCreated + contactsUpdated + contactsFailed,
           contactsCreated,
           contactsUpdated,
           contactsFailed,
         }
       })
+      
+      // Add a small delay to ensure progress is visible
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
     
     // Batch-level error recovery
@@ -481,14 +493,181 @@ async function performSearchSync(pipedriveService: PipedriveService, userId: str
 async function mapPipedriveContact(
   pipedriveContact: PipedrivePerson,
   organizationMap: Map<string, Organization>,
-  userId: string
+  userId: string,
+  pipedriveService?: PipedriveService
 ): Promise<CreateContactInput> {
-  // Extract primary email and phone values
-  const primaryEmail = extractPrimaryValue(pipedriveContact.email);
-  const primaryPhone = extractPrimaryValue(pipedriveContact.phone);
+  // Extract primary email and phone values (used in sync logic)
 
-  // Get organization if contact has one
-  const organization = pipedriveContact.org_id != null ? organizationMap.get(pipedriveContact.org_id.toString()) : null
+  // Store full arrays as JSON strings
+  const emailsJson = pipedriveContact.email ? JSON.stringify(pipedriveContact.email) : null;
+  const phonesJson = pipedriveContact.phone ? JSON.stringify(pipedriveContact.phone) : null;
+
+  // Process organization individually for this contact
+  let organization: Organization | null = null;
+  if (pipedriveContact.org_id) {
+    // Handle both object and number formats for org_id
+    const orgId = typeof pipedriveContact.org_id === 'object' && pipedriveContact.org_id !== null 
+      ? pipedriveContact.org_id.value?.toString() 
+      : pipedriveContact.org_id.toString()
+    
+    if (orgId) {
+      // Check if we already have this organization in our map
+      organization = organizationMap.get(orgId) || null;
+      
+      if (!organization) {
+        try {
+          // Always try to fetch organization details from Pipedrive if we have a service
+          if (pipedriveService) {
+            // Organization doesn't exist, fetch details from Pipedrive
+            const orgDetailsResponse = await pipedriveService.getOrganizationDetails(parseInt(orgId));
+            if (orgDetailsResponse.success && orgDetailsResponse.organization) {
+              const org = orgDetailsResponse.organization;
+              
+              // Extract custom field values from the organization data
+              // The custom fields are stored as properties with hashed keys
+              const orgData = org as unknown as Record<string, unknown>; // Type assertion to access dynamic properties
+              
+              // Known custom field keys from the debug logs
+              const sectorFieldKey = '0333b4d1dc8f3e971d51197989327cdf50e21961'; // Sector field key
+              const countryFieldKey = 'c388fe9ef3ec06109a3bcd215f965dc4f35690a3'; // Country field key  
+              const sizeFieldKey = '4cd70be402c43c55b3fde83d05becf624852344c'; // Size field key
+
+              // Extract sector value
+              let sectorName: string | null = null;
+              const sectorValue = orgData[sectorFieldKey];
+              if (sectorValue && typeof sectorValue === 'string') {
+                const sectorId = parseInt(sectorValue);
+                if (!isNaN(sectorId)) {
+                  console.log(`Organization ${org.name} - Found sector ID: ${sectorId}`);
+                  sectorName = await pipedriveService.translateSectorId(sectorId);
+                  if (sectorName) {
+                    console.log(`Organization ${org.name} - Translated sector ID ${sectorId} to: ${sectorName}`);
+                  } else {
+                    console.warn(`Could not translate sector ID ${sectorId} to name, using ID as string`);
+                    sectorName = sectorValue;
+                  }
+                } else {
+                  sectorName = sectorValue;
+                }
+              } else {
+                console.log(`Organization ${org.name} - No sector value found`);
+              }
+
+              // Extract country value
+              let countryName: string | null = null;
+              const countryValue = orgData[countryFieldKey];
+              if (countryValue && typeof countryValue === 'string') {
+                const countryId = parseInt(countryValue);
+                if (!isNaN(countryId)) {
+                  console.log(`Organization ${org.name} - Found country ID: ${countryId}`);
+                  countryName = await pipedriveService.translateCountryId(countryId);
+                  if (countryName) {
+                    console.log(`Organization ${org.name} - Translated country ID ${countryId} to: ${countryName}`);
+                  } else {
+                    console.warn(`Could not translate country ID ${countryId} to name, using ID as string`);
+                    countryName = countryValue;
+                  }
+                } else {
+                  countryName = countryValue;
+                }
+              } else {
+                console.log(`Organization ${org.name} - No country value found`);
+              }
+
+              // Extract size value
+              let sizeName: string | null = null;
+              const sizeValue = orgData[sizeFieldKey];
+              if (sizeValue && typeof sizeValue === 'string') {
+                const sizeId = parseInt(sizeValue);
+                if (!isNaN(sizeId)) {
+                  console.log(`Organization ${org.name} - Found size ID: ${sizeId}`);
+                  sizeName = await pipedriveService.translateSizeId(sizeId);
+                  if (sizeName) {
+                    console.log(`Organization ${org.name} - Translated size ID ${sizeId} to: ${sizeName}`);
+                  } else {
+                    console.warn(`Could not translate size ID ${sizeId} to name, using ID as string`);
+                    sizeName = sizeValue;
+                  }
+                } else {
+                  sizeName = sizeValue;
+                }
+              } else {
+                console.log(`Organization ${org.name} - No size value found`);
+              }
+
+              // Debug logging to see what values we're getting
+              console.log(`Organization ${org.name} - Raw custom field data:`, {
+                sectorKey: sectorFieldKey,
+                sectorValue: orgData[sectorFieldKey],
+                countryKey: countryFieldKey,
+                countryValue: orgData[countryFieldKey],
+                sizeKey: sizeFieldKey,
+                sizeValue: orgData[sizeFieldKey]
+              });
+
+              // Create organization with full details
+              const organizationData = {
+                name: org.name || 'Unknown Organization',
+                pipedriveOrgId: orgId,
+                address: org.address || undefined,
+                industry: sectorName || undefined, // Map sector to industry field in our database
+                country: countryName || undefined,
+                size: sizeName || undefined,
+                website: typeof org.website === 'string' ? org.website : undefined,
+                city: typeof org.city === 'string' ? org.city : undefined
+              };
+              
+              console.log(`Creating/updating organization with data:`, organizationData);
+              
+              const createdOrg = await OrganizationService.findOrCreateOrganization(organizationData);
+              
+              console.log(`Created/updated organization ${org.name} with full details from Pipedrive`);
+              organization = createdOrg as Organization;
+              organizationMap.set(orgId, organization);
+            } else {
+              // If we can't fetch organization details, create with basic info from contact
+              console.log(`Failed to fetch organization details for ID ${orgId}, creating with basic info`);
+              const basicOrg = await OrganizationService.findOrCreateOrganization({
+                name: pipedriveContact.org_name || 'Unknown Organization',
+                pipedriveOrgId: orgId,
+                address: undefined
+              });
+              organization = basicOrg as Organization;
+              organizationMap.set(orgId, organization);
+            }
+            
+            // Rate limit: wait 200ms between organization API calls
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } else {
+            // No pipedriveService available, create with basic info
+                          const basicOrg = await OrganizationService.findOrCreateOrganization({
+                name: pipedriveContact.org_name || 'Unknown Organization',
+                pipedriveOrgId: orgId,
+                address: undefined
+              });
+            organization = basicOrg as Organization;
+            organizationMap.set(orgId, organization);
+          }
+        } catch (orgError) {
+          console.error('Error processing organization for contact:', pipedriveContact.id, orgId, orgError);
+          
+          // Fallback: create organization with basic info from contact
+          try {
+            const fallbackOrg = await OrganizationService.findOrCreateOrganization({
+              name: pipedriveContact.org_name || 'Unknown Organization',
+              pipedriveOrgId: orgId,
+              address: undefined
+            });
+            organization = fallbackOrg as Organization;
+            organizationMap.set(orgId, organization);
+          } catch (fallbackError) {
+            console.error('Error creating fallback organization:', fallbackError);
+            // Continue without organization
+          }
+        }
+      }
+    }
+  }
   
   // Handle lastPipedriveUpdate with proper validation
   let lastPipedriveUpdate: Date | null = null
@@ -500,14 +679,71 @@ async function mapPipedriveContact(
     }
   }
 
+  // Handle lastActivityDate (used for lastContacted calculation)
+  let lastActivityDate: Date | null = null
+  if (pipedriveContact.last_activity_date) {
+    const activityDate = new Date(pipedriveContact.last_activity_date)
+    if (!isNaN(activityDate.getTime()) && activityDate.getTime() > 0) {
+      lastActivityDate = activityDate
+    }
+  }
+
+  // Handle lastIncomingMailTime
+  let lastIncomingMailTime: Date | null = null
+  if (pipedriveContact.last_incoming_mail_time) {
+    const mailTime = new Date(pipedriveContact.last_incoming_mail_time)
+    if (!isNaN(mailTime.getTime()) && mailTime.getTime() > 0) {
+      lastIncomingMailTime = mailTime
+    }
+  }
+
+  // Handle lastOutgoingMailTime
+  let lastOutgoingMailTime: Date | null = null
+  if (pipedriveContact.last_outgoing_mail_time) {
+    const mailTime = new Date(pipedriveContact.last_outgoing_mail_time)
+    if (!isNaN(mailTime.getTime()) && mailTime.getTime() > 0) {
+      lastOutgoingMailTime = mailTime
+    }
+  }
+
+  // Calculate lastContacted based on the most recent activity
+  let lastContacted: Date | null = null
+  if (lastActivityDate) {
+    lastContacted = lastActivityDate
+  } else if (lastIncomingMailTime) {
+    lastContacted = lastIncomingMailTime
+  } else if (lastOutgoingMailTime) {
+    lastContacted = lastOutgoingMailTime
+  } else if (lastPipedriveUpdate) {
+    lastContacted = lastPipedriveUpdate
+  }
+
+  // Warmness Score calculation is handled in the sync logic above
+
   return {
     name: pipedriveContact.name,
-    email: primaryEmail,
-    phone: primaryPhone,
+    email: emailsJson, // Store all emails as JSON string
+    phone: phonesJson, // Store all phones as JSON string
     organizationId: organization?.id || null,
     pipedrivePersonId: pipedriveContact.id.toString(),
     pipedriveOrgId: pipedriveContact.org_id != null ? pipedriveContact.org_id.toString() : null,
     lastPipedriveUpdate,
+    lastContacted,
+    
+    // New Pipedrive fields
+    lastActivityDate,
+    openDealsCount: pipedriveContact.open_deals_count || 0,
+    closedDealsCount: pipedriveContact.closed_deals_count || 0,
+    wonDealsCount: pipedriveContact.won_deals_count || 0,
+    lostDealsCount: pipedriveContact.lost_deals_count || 0,
+    activitiesCount: pipedriveContact.activities_count || 0,
+    emailMessagesCount: pipedriveContact.email_messages_count || 0,
+    lastIncomingMailTime,
+    lastOutgoingMailTime,
+    followersCount: pipedriveContact.followers_count || 0,
+    jobTitle: pipedriveContact.job_title || null,
+    // warmnessScore calculation is handled in the sync logic above
+    
     userId,
   };
 }

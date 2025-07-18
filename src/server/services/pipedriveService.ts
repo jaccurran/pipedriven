@@ -17,11 +17,48 @@ export interface PipedrivePerson {
     primary: boolean
   }>
   org_name?: string
-  org_id?: number
+  org_id?: {
+    name: string
+    people_count: number
+    owner_id: number
+    address?: string | null
+    label_ids: number[]
+    active_flag: boolean
+    cc_email?: string
+    owner_name: string
+    value: number
+  } | number
   created: string
   updated: string
   custom_fields?: Record<string, unknown>
   update_time?: number
+  
+  // Activity and engagement fields
+  last_activity_date?: string
+  last_activity_id?: number
+  activities_count?: number
+  
+  // Deal counts
+  open_deals_count?: number
+  closed_deals_count?: number
+  won_deals_count?: number
+  lost_deals_count?: number
+  related_open_deals_count?: number
+  related_closed_deals_count?: number
+  related_won_deals_count?: number
+  related_lost_deals_count?: number
+  
+  // Email activity
+  email_messages_count?: number
+  last_incoming_mail_time?: string
+  last_outgoing_mail_time?: string
+  
+  // Social and metadata
+  followers_count?: number
+  job_title?: string
+  
+  // Additional fields that might be available
+  [key: string]: unknown
 }
 
 export interface PipedriveCustomField {
@@ -56,8 +93,28 @@ export interface PipedriveOrganization {
   cc_email?: string
   created: string
   updated: string
-  country?: string
-  industry?: string
+  country?: string | number  // Pipedrive can return this as either string or number
+  sector?: string | number  // Pipedrive can return this as either string or number
+  size?: string | number    // Pipedrive can return this as either string or number
+  website?: string
+  city?: string
+}
+
+export interface PipedriveActivity {
+  id: number
+  subject: string
+  type: string
+  due_date?: string
+  due_time?: string
+  duration?: string
+  note?: string
+  person_id?: number
+  org_id?: number
+  user_id?: number
+  done: boolean
+  done_time?: string
+  created: string
+  updated: string
 }
 
 
@@ -323,7 +380,8 @@ export class PipedriveService {
 
       // Use the filter to get only active contacts
       while (keepFetching) {
-        const endpoint = `/persons?start=${start}&limit=${limit}&filter_id=${filterResult.filterId}&include_custom_fields=1`
+        // Try to include more data by adding additional parameters
+        const endpoint = `/persons?start=${start}&limit=${limit}&filter_id=${filterResult.filterId}&include_custom_fields=1&include_activities=1&include_deals=1`
         
         const result = await this.makeApiRequest(endpoint, {}, {
           endpoint: '/persons',
@@ -335,6 +393,11 @@ export class PipedriveService {
             success: false,
             error: result.error || 'Failed to fetch persons from Pipedrive',
           }
+        }
+
+        // Log the first person to see what fields are available
+        if (start === 0 && result.data?.data && Array.isArray(result.data.data) && result.data.data.length > 0) {
+          console.log('Sample Pipedrive person data:', JSON.stringify(result.data.data[0], null, 2))
         }
 
         const persons = result.data?.data as PipedrivePerson[] | undefined || []
@@ -426,6 +489,39 @@ export class PipedriveService {
       return {
         success: false,
         error: 'Failed to fetch organizations from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get detailed information for a specific organization
+   */
+  async getOrganizationDetails(orgId: number): Promise<{ success: boolean; organization?: PipedriveOrganization; error?: string }> {
+    try {
+      const result = await this.makeApiRequest(`/organizations/${orgId}`, {}, {
+        endpoint: `/organizations/${orgId}`,
+        method: 'GET',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch organization details from Pipedrive',
+        }
+      }
+
+      // Debug: Log the raw API response
+      console.log(`[getOrganizationDetails] Raw API response for org ${orgId}:`, JSON.stringify(result.data?.data, null, 2))
+
+      return {
+        success: true,
+        organization: result.data?.data as PipedriveOrganization | undefined,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch organization details from Pipedrive',
       }
     }
   }
@@ -539,50 +635,97 @@ export class PipedriveService {
    * Search persons in Pipedrive by name or email
    */
   async searchPersons(query: string): Promise<PipedrivePerson[]> {
+    console.log('[PipedriveService] searchPersons called with query:', query);
+    
     try {
       // Search by name
-      const nameResult = await this.makeApiRequest(`/persons/search?term=${encodeURIComponent(query)}`, {}, {
+      const searchUrl = `/persons/search?term=${encodeURIComponent(query)}`;
+      console.log('[PipedriveService] Making API request to:', searchUrl);
+      
+      const nameResult = await this.makeApiRequest(searchUrl, {}, {
         endpoint: '/persons/search',
         method: 'GET',
         searchQuery: query,
       })
 
+      console.log('[PipedriveService] API response success:', nameResult.success);
       if (!nameResult.success) {
-        console.error('Pipedrive search failed:', nameResult.error)
-        return []
+        console.error('[PipedriveService] Pipedrive search failed:', nameResult.error);
+        return [];
       }
 
-      const persons = (nameResult.data?.data as { items?: unknown[] } | undefined)?.items || []
+      console.log('[PipedriveService] Raw API response data:', JSON.stringify(nameResult.data, null, 2));
+      
+      const persons = (nameResult.data?.data as { items?: unknown[] } | undefined)?.items || [];
+      console.log('[PipedriveService] Found persons in response:', persons.length);
       
       // Transform the search results to match our PipedrivePerson interface
-      return persons.map((item: unknown) => {
-        const typedItem = item as { item?: PipedrivePerson; id?: number; name?: string; email?: string[]; phone?: string[]; org_name?: string; org_id?: number; created?: string; updated?: string }
+      const transformedPersons = persons.map((item: unknown) => {
+        const typedItem = item as { 
+          item?: { 
+            id?: number; 
+            name?: string; 
+            emails?: string[]; 
+            phones?: string[]; 
+            organization?: { name?: string; id?: number }; 
+            org_name?: string; 
+            org_id?: number; 
+            created?: string; 
+            updated?: string;
+            custom_fields?: Record<string, unknown>;
+          }; 
+          id?: number; 
+          name?: string; 
+          email?: string[]; 
+          phone?: string[]; 
+          org_name?: string; 
+          org_id?: number; 
+          created?: string; 
+          updated?: string;
+        }
+        
+        // Extract the actual person data from the search result structure
+        const personData = typedItem.item || typedItem;
         
         // Transform email and phone to the correct format
         const transformContactInfo = (info: string[] | undefined): Array<{ label: string; value: string; primary: boolean }> => {
           if (!info || !Array.isArray(info)) return []
           return info.map((value, index) => ({
-            label: index === 0 ? 'primary' : 'other',
+            label: index === 0 ? 'primary' : `secondary_${index}`,
             value,
             primary: index === 0
           }))
         }
         
-        return {
-          id: typedItem.item?.id || typedItem.id || 0,
-          name: typedItem.item?.name || typedItem.name || '',
-          email: typedItem.item?.email || transformContactInfo(typedItem.email),
-          phone: typedItem.item?.phone || transformContactInfo(typedItem.phone),
-          org_name: typedItem.item?.org_name || typedItem.org_name,
-          org_id: typedItem.item?.org_id || typedItem.org_id,
-          created: typedItem.item?.created || typedItem.created || '',
-          updated: typedItem.item?.updated || typedItem.updated || '',
-          custom_fields: typedItem.item?.custom_fields
+        const getProp = (obj: Record<string, unknown>, ...props: string[]) => {
+          for (const prop of props) {
+            if (obj && obj[prop] !== undefined) return obj[prop]
+          }
+          return undefined
         }
-      })
+        
+                  const personItem = ((personData as Record<string, unknown>).item || personData) as Record<string, unknown>
+        const transformed = {
+          id: (getProp(personItem, 'id') as number) || 0,
+                      name: (getProp(personItem, 'name') as string) || '',
+                      email: transformContactInfo(getProp(personItem, 'emails', 'email') as string[] | undefined),
+                      phone: transformContactInfo(getProp(personItem, 'phones', 'phone') as string[] | undefined),
+                      org_name: (getProp(personItem, 'organization') as Record<string, unknown>)?.name as string || (getProp(personItem, 'org_name') as string),
+                      org_id: (getProp(personItem, 'organization') as Record<string, unknown>)?.id as number || (getProp(personItem, 'org_id') as number),
+                      created: (getProp(personItem, 'created') as string) || '',
+                      updated: (getProp(personItem, 'updated') as string) || '',
+                      custom_fields: getProp(personItem, 'custom_fields') as Record<string, unknown>
+        };
+        
+        console.log('[PipedriveService] Transformed person:', transformed.name, 'ID:', transformed.id, 'Email:', transformed.email[0]?.value);
+        return transformed;
+      });
+      
+      console.log('[PipedriveService] Returning', transformedPersons.length, 'transformed persons');
+      return transformedPersons;
     } catch (error) {
-      console.error('Pipedrive search error:', error)
-      return []
+      console.error('[PipedriveService] Pipedrive search error:', error);
+      return [];
     }
   }
 
@@ -673,6 +816,100 @@ export class PipedriveService {
   }
 
   /**
+   * Get activities for a specific person from Pipedrive
+   */
+  async getPersonActivities(personId: number): Promise<{ success: boolean; activities?: PipedriveActivity[]; error?: string }> {
+    try {
+      const allActivities: PipedriveActivity[] = []
+      const limit = 100
+      let start = 0
+      let fetched = 0
+      let keepFetching = true
+
+      while (keepFetching) {
+        const endpoint = `/activities?start=${start}&limit=${limit}&person_id=${personId}`
+        
+        const result = await this.makeApiRequest(endpoint, {}, {
+          personId,
+          endpoint: '/activities',
+          method: 'GET',
+        })
+
+        if (!result.success) {
+          return {
+            success: false,
+            error: result.error || 'Failed to fetch activities from Pipedrive',
+          }
+        }
+
+        const activities = result.data?.data as PipedriveActivity[] | undefined || []
+        allActivities.push(...activities)
+        fetched = activities.length
+        start += fetched
+        keepFetching = fetched === limit
+      }
+
+      return {
+        success: true,
+        activities: allActivities
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to fetch activities from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Get the last contacted date for a person based on their activities
+   */
+  async getLastContactedDate(personId: number): Promise<{ success: boolean; lastContacted?: Date; error?: string }> {
+    try {
+      const result = await this.getPersonActivities(personId)
+      
+      if (!result.success || !result.activities) {
+        return {
+          success: false,
+          error: result.error || 'Failed to fetch activities',
+        }
+      }
+
+      // Filter for completed activities and sort by completion time
+      const completedActivities = result.activities
+        .filter(activity => activity.done && activity.done_time)
+        .sort((a, b) => {
+          const timeA = new Date(a.done_time!).getTime()
+          const timeB = new Date(b.done_time!).getTime()
+          return timeB - timeA // Most recent first
+        })
+
+      if (completedActivities.length === 0) {
+        return {
+          success: true,
+          lastContacted: undefined,
+        }
+      }
+
+      // Get the most recent completed activity
+      const lastActivity = completedActivities[0]
+      const lastContacted = new Date(lastActivity.done_time!)
+
+      return {
+        success: true,
+        lastContacted,
+      }
+    } catch (error) {
+      console.error('Error getting last contacted date:', error)
+      return {
+        success: false,
+        error: 'Failed to determine last contacted date',
+      }
+    }
+  }
+
+  /**
    * Map internal activity type to Pipedrive activity type
    */
   private mapActivityType(type: ActivityType): string {
@@ -739,6 +976,157 @@ export class PipedriveService {
   }
 
   /**
+   * Translate sector ID to sector name using custom field options
+   */
+  async translateSectorId(sectorId: number): Promise<string | null> {
+    try {
+      console.log(`[translateSectorId] Attempting to translate sector ID: ${sectorId}`);
+      
+      // Get organization custom fields to find sector field options
+      const customFieldsResult = await this.getOrganizationCustomFields()
+      
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        console.warn('Failed to fetch organization custom fields for sector translation')
+        return null
+      }
+
+      const fields = customFieldsResult.fields
+      console.log(`[translateSectorId] Found ${fields.length} organization custom fields`);
+      
+      // Log all field names to help debug
+      fields.forEach(field => {
+        console.log(`[translateSectorId] Field: ${field.name} (${field.key}) - Type: ${field.field_type}`);
+      });
+      
+      // Find the sector field (it could be named "Industry", "Sector", etc.)
+      const sectorField = fields.find(field => 
+        field.name && (
+          field.name.toLowerCase().includes('industry') ||
+          field.name.toLowerCase().includes('sector') ||
+          field.key === '0333b4d1dc8f3e971d51197989327cdf50e21961' // Known sector field key
+        )
+      )
+
+      // If not found by name, try to find by key
+      if (!sectorField) {
+        console.log('[translateSectorId] Sector field not found by name, trying to find by key...');
+        // Log all field keys to help debug
+        fields.forEach(field => {
+          console.log(`[translateSectorId] Field key: ${field.key} - Name: ${field.name}`);
+        });
+      }
+
+      if (!sectorField || !sectorField.options) {
+        console.warn('Sector field not found or has no options')
+        return null
+      }
+
+      console.log(`[translateSectorId] Found sector field: ${sectorField.name} with ${sectorField.options.length} options`);
+
+      // Find the option that matches the sector ID
+      const sectorOption = sectorField.options.find(option => 
+        option.id === sectorId || 
+        parseInt(option.value) === sectorId
+      )
+
+      if (sectorOption) {
+        console.log(`[translateSectorId] Found matching option: ${sectorOption.label} (${sectorOption.value})`);
+        return sectorOption.label || sectorOption.value
+      }
+
+      console.warn(`Sector ID ${sectorId} not found in custom field options`)
+      return null
+    } catch (error) {
+      console.error('Error translating sector ID:', error)
+      return null
+    }
+  }
+
+  /**
+   * Translate country ID to country name using custom field options
+   */
+  async translateCountryId(countryId: number): Promise<string | null> {
+    try {
+      const customFieldsResult = await this.getOrganizationCustomFields();
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        console.warn('Failed to fetch organization custom fields for country translation');
+        return null;
+      }
+      const fields = customFieldsResult.fields;
+      // Find the country field (could be named "Country")
+      const countryField = fields.find(field =>
+        field.name && field.name.toLowerCase().includes('country')
+      );
+
+      // If not found by name, try to find by key
+      if (!countryField) {
+        console.log('[translateCountryId] Country field not found by name, trying to find by key...');
+        // Log all field keys to help debug
+        fields.forEach(field => {
+          console.log(`[translateCountryId] Field key: ${field.key} - Name: ${field.name}`);
+        });
+      }
+      if (!countryField || !countryField.options) {
+        console.warn('Country field not found or has no options');
+        return null;
+      }
+      const countryOption = countryField.options.find(option =>
+        option.id === countryId || parseInt(option.value) === countryId
+      );
+      if (countryOption) {
+        return countryOption.label || countryOption.value;
+      }
+      console.warn(`Country ID ${countryId} not found in custom field options`);
+      return null;
+    } catch (error) {
+      console.error('Error translating country ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Translate size ID to size label using custom field options
+   */
+  async translateSizeId(sizeId: number): Promise<string | null> {
+    try {
+      const customFieldsResult = await this.getOrganizationCustomFields();
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        console.warn('Failed to fetch organization custom fields for size translation');
+        return null;
+      }
+      const fields = customFieldsResult.fields;
+      // Find the size field (could be named "Size")
+      const sizeField = fields.find(field =>
+        field.name && field.name.toLowerCase().includes('size')
+      );
+
+      // If not found by name, try to find by key
+      if (!sizeField) {
+        console.log('[translateSizeId] Size field not found by name, trying to find by key...');
+        // Log all field keys to help debug
+        fields.forEach(field => {
+          console.log(`[translateSizeId] Field key: ${field.key} - Name: ${field.name}`);
+        });
+      }
+      if (!sizeField || !sizeField.options) {
+        console.warn('Size field not found or has no options');
+        return null;
+      }
+      const sizeOption = sizeField.options.find(option =>
+        option.id === sizeId || parseInt(option.value) === sizeId
+      );
+      if (sizeOption) {
+        return sizeOption.label || sizeOption.value;
+      }
+      console.warn(`Size ID ${sizeId} not found in custom field options`);
+      return null;
+    } catch (error) {
+      console.error('Error translating size ID:', error);
+      return null;
+    }
+  }
+
+  /**
    * Make a safe API request with retry logic and error handling
    */
   private async makeApiRequest(
@@ -765,19 +1153,35 @@ export class PipedriveService {
         const response = await fetch(url, requestOptions)
         
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
+          let errorData = {}
+          try {
+            const responseText = await response.text()
+            if (responseText.trim()) {
+              errorData = JSON.parse(responseText)
+            }
+          } catch (parseError) {
+            console.warn('Failed to parse error response:', parseError)
+          }
           
           // Handle specific error cases
           if (response.status === 429 && pipedriveConfig.enableRateLimiting) {
             const retryAfter = response.headers.get('retry-after')
-            console.error(`Pipedrive rate limit exceeded. Retry after ${retryAfter} seconds`)
-            return {
-              success: false,
-              error: 'Rate limit exceeded',
-              diagnostics: {
-                retryAfter: retryAfter,
-                attempt,
-                ...context,
+            const delay = retryAfter ? parseInt(retryAfter) * 1000 : 2000 // Default 2 seconds
+            
+            console.log(`Pipedrive rate limit exceeded. Retry after ${delay}ms`)
+            
+            if (attempt <= maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, delay))
+              continue // Retry the request
+            } else {
+              return {
+                success: false,
+                error: 'Rate limit exceeded',
+                diagnostics: {
+                  retryAfter: retryAfter,
+                  attempt,
+                  ...context,
+                }
               }
             }
           }
@@ -808,7 +1212,7 @@ export class PipedriveService {
 
           return {
             success: false,
-            error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+            error: (errorData as Record<string, unknown>).error as string || `HTTP ${response.status}: ${response.statusText}`,
             diagnostics: {
               attempt,
               ...context,
@@ -816,7 +1220,35 @@ export class PipedriveService {
           }
         }
 
-        const data = await response.json()
+        // Handle successful response with proper JSON parsing
+        let data: PipedriveApiResponse<unknown>
+        try {
+          const responseText = await response.text()
+          if (!responseText.trim()) {
+            console.warn('Empty response from Pipedrive API')
+            return {
+              success: false,
+              error: 'Empty response from API',
+              diagnostics: {
+                attempt,
+                ...context,
+              }
+            }
+          }
+          data = JSON.parse(responseText)
+        } catch (parseError) {
+          console.error('Failed to parse Pipedrive API response:', parseError)
+          return {
+            success: false,
+            error: 'Invalid JSON response from API',
+            diagnostics: {
+              attempt,
+              parseError: parseError instanceof Error ? parseError.message : 'Unknown parse error',
+              ...context,
+            }
+          }
+        }
+
         return { success: true, data, diagnostics: { attempt, ...context } }
 
       } catch (error) {

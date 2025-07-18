@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Contact, Campaign, User } from '@prisma/client'
 import { ContactCard } from '@/components/contacts/ContactCard'
 import { ContactForm } from '@/components/contacts/ContactForm'
@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils'
 interface PipedriveContact {
   id: number
   name: string
-  email: string[]
-  phone: string[]
+  email: Array<{ label: string; value: string; primary: boolean }>
+  phone: Array<{ label: string; value: string; primary: boolean }>
   org_name?: string
   source: 'pipedrive'
 }
@@ -46,35 +46,44 @@ export function CampaignContactList({
 }: CampaignContactListProps) {
   const [showAddContactModal, setShowAddContactModal] = useState(false)
   const [showCreateContactModal, setShowCreateContactModal] = useState(false)
-  const [isCreatingContact, setIsCreatingContact] = useState(false)
-  const [isLoadingAction, setIsLoadingAction] = useState(false)
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
-  const [successMessage, setSuccessMessage] = useState('')
-  const [availableContacts, setAvailableContacts] = useState<Contact[]>([])
-  const [pipedriveContacts, setPipedriveContacts] = useState<Array<{
-    id: number;
-    name: string;
-    email: string[];
-    phone: string[];
-    org_name?: string;
-    source: string;
-  }>>([])
-  const [loadingPipedrive, setLoadingPipedrive] = useState(false)
-  const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
-  
-  // Activity modal state
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
-  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
+  const [isLoadingAction, setIsLoadingAction] = useState(false)
+  const [isCreatingContact, setIsCreatingContact] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [availableContacts, setAvailableContacts] = useState<Contact[]>([])
+  const [pipedriveContacts, setPipedriveContacts] = useState<PipedriveContact[]>([])
+  const [loadingPipedrive, setLoadingPipedrive] = useState(false)
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
+  
+  // State to track contact updates (for optimistic updates)
+  const [contactUpdates, setContactUpdates] = useState<Record<string, Partial<Contact>>>({})
+
+  // Merge original contacts with updates
+  const mergedContacts = useMemo(() => {
+    return contacts.map(contact => ({
+      ...contact,
+      ...contactUpdates[contact.id]
+    }))
+  }, [contacts, contactUpdates])
+
+  // Sort contacts by last contacted date (most recent first)
+  const sortedContacts = useMemo(() => {
+    return [...mergedContacts].sort((a, b) => {
+      if (!a.lastContacted && !b.lastContacted) return 0
+      if (!a.lastContacted) return 1
+      if (!b.lastContacted) return -1
+      return new Date(b.lastContacted).getTime() - new Date(a.lastContacted).getTime()
+    })
+  }, [mergedContacts])
 
   
   // Use ref to avoid dependency issues
   const contactsRef = useRef(contacts)
   contactsRef.current = contacts
-
-  // Sort contacts by warmness score (highest first)
-  const sortedContacts = [...contacts].sort((a, b) => b.warmnessScore - a.warmnessScore)
 
   const fetchAvailableContacts = useCallback(async () => {
     try {
@@ -100,8 +109,10 @@ export function CampaignContactList({
   }, [showAddContactModal, fetchAvailableContacts])
 
   const handleSearchPipedrive = useCallback(async (query: string) => {
+    console.log('[CampaignContactList] handleSearchPipedrive called with query:', query);
     setLoadingPipedrive(true)
     try {
+      console.log('[CampaignContactList] Making fetch request to /api/pipedrive/contacts/search');
       const response = await fetch('/api/pipedrive/contacts/search', {
         method: 'POST',
         headers: {
@@ -110,33 +121,42 @@ export function CampaignContactList({
         body: JSON.stringify({ query }),
       })
 
+      console.log('[CampaignContactList] Response status:', response.status);
+      console.log('[CampaignContactList] Response ok:', response.ok);
+
       if (response.ok) {
         const data = await response.json()
+        console.log('[CampaignContactList] Response data:', data);
+        console.log('[CampaignContactList] Results count:', data.results?.length || 0);
+        
         // Add source property to Pipedrive contacts
         const pipedriveContactsWithSource = (data.results || []).map((contact: {
           id: number;
           name: string;
-          email: string[];
-          phone: string[];
+          email: Array<{ label: string; value: string; primary: boolean }>;
+          phone: Array<{ label: string; value: string; primary: boolean }>;
           org_name?: string;
         }) => ({
           ...contact,
           source: 'pipedrive'
         }))
+        console.log('[CampaignContactList] Setting pipedrive contacts:', pipedriveContactsWithSource.length);
         setPipedriveContacts(pipedriveContactsWithSource)
       } else {
         const errorData = await response.json().catch(() => ({}))
+        console.log('[CampaignContactList] Error response data:', errorData);
         
         // Don't log error for missing API key - this is expected for users without Pipedrive
         if (errorData.error !== 'Pipedrive API key not configured') {
-          console.error('Failed to search Pipedrive contacts:', errorData.error || 'Unknown error')
+          console.error('[CampaignContactList] Failed to search Pipedrive contacts:', errorData.error || 'Unknown error')
         }
         setPipedriveContacts([])
       }
     } catch (error) {
-      console.error('Failed to search Pipedrive contacts:', error)
+      console.error('[CampaignContactList] Failed to search Pipedrive contacts:', error)
       setPipedriveContacts([])
     } finally {
+      console.log('[CampaignContactList] Setting loadingPipedrive to false');
       setLoadingPipedrive(false)
     }
   }, [])
@@ -189,8 +209,12 @@ export function CampaignContactList({
           },
           body: JSON.stringify({
             name: contact.name,
-            email: contact.email?.[0] || '',
-            phone: contact.phone?.[0] || '',
+            email: Array.isArray(contact.email) 
+              ? (contact.email[0]?.value || '')
+              : contact.email || '',
+            phone: Array.isArray(contact.phone) 
+              ? (contact.phone[0]?.value || '')
+              : contact.phone || '',
             organisation: contact.org_name || '',
             pipedrivePersonId: contact.id.toString(),
           }),
@@ -220,7 +244,7 @@ export function CampaignContactList({
     }
   }, [addContactToCampaign])
 
-  const handleCreateContact = useCallback(async () => {
+  const handleCreateContact = useCallback(() => {
     setShowCreateContactModal(true)
   }, [])
 
@@ -283,6 +307,15 @@ export function CampaignContactList({
       setIsLoadingAction(false)
     }
   }, [campaign.id, onContactsUpdate])
+
+  const handleWarmnessUpdate = useCallback((contactId: string, newScore: number) => {
+    // Update the contact's warmness score in the local state
+    setContactUpdates(prev => ({
+      ...prev,
+      [contactId]: { ...prev[contactId], warmnessScore: newScore }
+    }))
+    console.log(`Warmness updated for contact ${contactId} to ${newScore}`)
+  }, [])
 
   const handleActivity = useCallback(async (contactId: string, actionType: string) => {
     // For test integration - expose mode globally
@@ -509,6 +542,7 @@ export function CampaignContactList({
               onEdit={handleEditContact}
               onDelete={() => handleContactRemove(contact.id)}
               onActivity={(contactId, actionType) => handleActivity(contactId, actionType)}
+              onWarmnessUpdate={handleWarmnessUpdate}
               className="border border-gray-200 rounded-lg p-4"
             />
           ))}
@@ -536,10 +570,10 @@ export function CampaignContactList({
         pipedriveContacts={pipedriveContacts.map(contact => ({
           id: contact.id,
           name: contact.name,
-          email: contact.email?.[0] || undefined,
+          email: contact.email?.[0]?.value || undefined,
           organization: contact.org_name || undefined,
           jobTitle: undefined,
-          phone: contact.phone?.[0] || undefined,
+          phone: contact.phone?.[0]?.value || undefined,
           warmnessScore: undefined,
           source: 'pipedrive' as const,
           pipedrivePersonId: contact.id.toString(),

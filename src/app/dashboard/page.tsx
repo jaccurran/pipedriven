@@ -1,13 +1,29 @@
-import { EnhancedAuthFlow } from "@/components/auth/EnhancedAuthFlow";
-import { DashboardWrapper } from "@/components/dashboard/DashboardWrapper";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { UserRole } from "@prisma/client";
+"use client";
 
-export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
-  
+import { EnhancedAuthFlow } from "@/components/auth/EnhancedAuthFlow";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, Suspense } from "react";
+
+function DashboardContent() {
+  const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    // Handle initial routing based on search params
+    const route = searchParams.get('route');
+    if (route && ['campaigns', 'my-500', 'analytics'].includes(route)) {
+      // Update the URL without triggering a page reload
+      const newUrl = `/${route}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [searchParams]);
+
+  if (status === "loading") {
+    return null;
+  }
+
   if (!session?.user) {
     return null; // This should be handled by EnhancedAuthFlow
   }
@@ -16,28 +32,20 @@ export default async function DashboardPage() {
     <EnhancedAuthFlow>
       <DashboardLayout 
         user={{
+          id: session.user.id || '',
           name: session.user.name || 'User',
           email: session.user.email || '',
           role: session.user.role || 'CONSULTANT'
         }}
-      >
-        <DashboardWrapper 
-          user={{
-            id: session.user.id,
-            name: session.user.name || 'User',
-            email: session.user.email || '',
-            role: session.user.role as UserRole || 'CONSULTANT',
-            pipedriveApiKey: session.user.pipedriveApiKey || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            password: null,
-            lastSyncTimestamp: null,
-            syncStatus: 'IDLE',
-            emailVerified: null,
-            image: null
-          }} 
-        />
-      </DashboardLayout>
+      />
     </EnhancedAuthFlow>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 } 

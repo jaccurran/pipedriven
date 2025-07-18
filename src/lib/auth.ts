@@ -78,6 +78,34 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
+      // Validate that the user still exists in the database
+      if (token?.id) {
+        try {
+          const userExists = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { id: true }
+          })
+
+          if (!userExists) {
+            console.log('User no longer exists in database, invalidating session:', token.id)
+            // Instead of returning null, return an empty session to trigger signout
+            return {
+              ...session,
+              user: undefined,
+              expires: new Date(0).toISOString()
+            }
+          }
+        } catch {
+          console.error('Error validating user existence');
+          // On database error, return empty session for safety
+          return {
+            ...session,
+            user: undefined,
+            expires: new Date(0).toISOString()
+          }
+        }
+      }
+
       // Send properties to the client
       if (token && session.user) {
         session.user.id = token.id as string
@@ -179,5 +207,57 @@ export async function checkApiKeyValidity(userId: string): Promise<{ valid: bool
   } catch (error) {
     console.error('API key validation error:', error)
     return { valid: false, error: 'Failed to validate API key' }
+  }
+} 
+
+// Helper function to validate session and user existence
+export async function validateSessionAndUser() {
+  const session = await getServerSession()
+  
+  if (!session?.user?.id) {
+    throw new Error('Authentication required')
+  }
+
+  // Validate that the user still exists in the database
+  const userExists = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true }
+  })
+
+  if (!userExists) {
+    console.log('User no longer exists in database, invalidating session:', session.user.id)
+    throw new Error('User session invalid - please sign in again')
+  }
+
+  return session
+}
+
+// Helper function to safely get session with validation
+export async function getValidatedSession() {
+  try {
+    return await validateSessionAndUser()
+  } catch {
+    // Return null for invalid sessions instead of throwing
+    return null
+  }
+}
+
+// Helper function to require authentication with user validation
+export function requireAuthWithValidation() {
+  return async () => {
+    return await validateSessionAndUser()
+  }
+}
+
+// Helper function to require specific role with user validation
+export function requireRoleWithValidation(role: UserRole) {
+  return async () => {
+    const session = await validateSessionAndUser()
+    
+    if (!hasRole(session.user.role as UserRole, role)) {
+      throw new Error('Insufficient permissions')
+    }
+    
+    return session
   }
 } 

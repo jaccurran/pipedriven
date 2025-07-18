@@ -15,6 +15,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate that the user still exists in the database
+    const userExists = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      console.log('User no longer exists in database, invalidating session:', session.user.id);
+      return NextResponse.json(
+        { error: "User session invalid - please sign in again" },
+        { status: 401 }
+      );
+    }
+
     let apiKey: string;
     try {
       const body = await request.json();
@@ -91,6 +105,20 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // Validate that the user still exists in the database
+    const userExists = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      console.log('User no longer exists in database, invalidating session:', session.user.id);
+      return NextResponse.json(
+        { error: "User session invalid - please sign in again" },
         { status: 401 }
       );
     }

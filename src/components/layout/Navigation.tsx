@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Logo } from '@/components/ui/Logo'
 
 interface NavigationProps {
   user?: {
@@ -43,11 +44,12 @@ export function Navigation({ user }: NavigationProps) {
           {/* Logo and main navigation */}
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/dashboard" className="text-xl font-bold text-blue-600">
-                Pipedriven
+              <Link href="/dashboard" className="flex items-center">
+                <Logo size="lg" />
+                <span className="ml-2 text-xl font-bold text-gray-900">Pipedriven</span>
               </Link>
             </div>
-            
+
             {/* Desktop navigation */}
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {navigation.map((item) => (

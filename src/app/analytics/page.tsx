@@ -1,43 +1,15 @@
-import { getServerSession } from 'next-auth'
-import { redirect } from 'next/navigation'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard'
+"use client";
 
-export default async function AnalyticsPage() {
-  const session = await getServerSession(authOptions)
-  
-  if (!session?.user) {
-    redirect('/auth/signin')
-  }
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-    },
-  })
+export default function AnalyticsPage() {
+  const router = useRouter();
 
-  if (!user) {
-    redirect('/auth/signin')
-  }
+  useEffect(() => {
+    // Redirect to dashboard page, which will handle the analytics route
+    router.replace('/dashboard?route=analytics');
+  }, [router]);
 
-  return (
-    <DashboardLayout user={user}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-          <p className="text-gray-600">Track your lead sourcing performance</p>
-        </div>
-
-        {/* Analytics Dashboard */}
-        <AnalyticsDashboard userId={user.id} />
-      </div>
-    </DashboardLayout>
-  )
+  return null;
 } 

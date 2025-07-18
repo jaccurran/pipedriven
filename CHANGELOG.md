@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Error Boundary**: Added global ErrorBoundary component to catch JSON parsing errors and other runtime errors
+- **Enhanced Error Handling**: Improved API error responses with better serialization validation
+- **Rate Limiting Improvements**: Enhanced Pipedrive API rate limiting with proper retry delays and exponential backoff
+
+### Fixed
+- **JSON Parsing Errors**: Fixed "Unexpected end of JSON input" errors by improving response handling
+- **Rate Limiting**: Improved Pipedrive API rate limiting with proper retry logic and delays
+- **API Response Serialization**: Added validation to ensure all API responses are properly serializable
+- **Session Validation**: Fixed session invalidation when users no longer exist in database
+- **API Key Validation**: Reduced excessive API key validation calls with caching and optimization
+
+### Performance
+- **API Key Caching**: Implemented 5-minute caching for API key validation to reduce redundant calls
+- **Rate Limit Handling**: Added proper retry delays for Pipedrive API rate limiting (2-second default)
+- **Error Recovery**: Enhanced error handling with better diagnostics and recovery strategies
+
+### Security
+- **Session Security**: Improved session validation to prevent access with invalid user sessions
+- **API Key Security**: Enhanced API key validation with proper error handling and caching
+
 ### Fixed
 - **API Key Validation Endpoint Issues** - Resolved JSON parsing errors and endpoint inconsistencies
   - **JSON Parsing Errors**: Fixed "Unexpected end of JSON input" errors by adding proper error handling for empty request bodies
@@ -86,4 +107,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Existing users will be prompted to set up API keys if they don't have them
 - No data migration required - new system starts with encrypted storage
 
-## [Previous Entries...] 
+### Performance
+- **Pipedrive Sync Optimization** - Eliminated rate limit issues and improved sync performance
+  - **Efficient Data Extraction**: Now uses data from initial Pipedrive API response instead of making separate API calls per contact
+  - **Rate Limit Resolution**: Eliminated hundreds of API calls during sync that were causing rate limit issues
+  - **Last Contacted Date**: Automatically imports `last_activity_date` from Pipedrive for accurate "last contacted" information
+  - **Sync Speed**: Reduced sync time from minutes to seconds by using data already available in initial response
+
+### Added
+- **Enhanced Contact Data from Pipedrive** - Added comprehensive contact analytics and engagement data
+  - **Deal Information**: 
+    - `openDealsCount` - Number of open deals
+    - `closedDealsCount` - Number of closed deals  
+    - `wonDealsCount` - Number of won deals
+    - `lostDealsCount` - Number of lost deals
+  - **Activity Metrics**:
+    - `activitiesCount` - Total activities
+    - `emailMessagesCount` - Number of email messages
+    - `lastActivityDate` - Date of last activity (used for "last contacted")
+  - **Email Engagement**:
+    - `lastIncomingMailTime` - Last incoming email time
+    - `lastOutgoingMailTime` - Last outgoing email time
+  - **Social and Metadata**:
+    - `followersCount` - Number of followers
+    - `jobTitle` - Contact's job title
+  - **Database Schema**: Added new fields to Contact model with proper indexing
+  - **API Integration**: Updated all contact APIs to return new fields
+  - **Type Safety**: Updated TypeScript interfaces and validation schemas
+
+### Fixed
+- **Organization Linking in Sync** - Fixed contacts not being linked to organizations during sync
+  - **Root Cause**: Pipedrive API returns `org_id` as an object with a `value` property, not a simple number
+  - **Solution**: Updated `PipedrivePerson` interface and sync logic to handle org_id objects correctly
+  - **Impact**: Contacts are now properly linked to organizations with correct `organizationId` field
+  - **Data Integrity**: Fixed 123 orphaned contacts that had `pipedriveOrgId` but no `organizationId`
+
+- **Sync Rate Limiting** - Resolved massive rate limit issues during Pipedrive sync
+  - **Root Cause**: Sync was making separate API calls for each contact to fetch activity data
+  - **Solution**: Use data already available in initial Pipedrive persons API response
+  - **Impact**: Sync now completes in seconds instead of hitting rate limits
+
+### Changed
+- **Contact Creation Logic**: Updated to use `last_activity_date` from Pipedrive as `lastContacted` field
+- **Database Schema**: Added 11 new fields to Contact model for comprehensive Pipedrive data
+- **API Responses**: Enhanced contact APIs to include all new Pipedrive fields
+- **Type Definitions**: Updated CreateContactInput and related interfaces
+
+### Technical Details
+- **Database Migration**: `20250717204821_add_pipedrive_fields_to_contacts`
+- **New Fields**: Added to Contact model with proper defaults and nullable types
+- **API Updates**: Modified `/api/my-500` and `/api/my-500/search` to return new fields
+- **Sync Logic**: Updated `mapPipedriveContact` function to extract all available data
+- **Type Safety**: Updated all TypeScript interfaces and validation schemas
+- **Performance**: Eliminated N+1 API call problem during sync
+
+### Files Modified
+- `prisma/schema.prisma` - Added new Contact fields
+- `src/server/services/pipedriveService.ts` - Updated PipedrivePerson interface
+- `src/lib/types.ts` - Updated CreateContactInput interface
+- `src/app/api/pipedrive/contacts/sync/route.ts` - Updated sync logic
+- `src/server/services/contactService.ts` - Updated CreateContactData interface
+- `src/app/api/my-500/route.ts` - Added new fields to API response
+- `src/app/api/my-500/search/route.ts` - Added new fields to search API response
+
+### Breaking Changes
+- None - All changes are additive and backward compatible
+
+### Migration Notes
+- Database migration required to add new fields
+- Existing contacts will have default values for new fields
+- Sync will populate new fields for all contacts on next sync
+
+## [Previous Entries]
+- **API Key Validation Optimization**: Reduced excessive API key validation calls by implementing caching and removing redundant checks
+- **Session Management**: Fixed session invalidation for non-existent users and improved error handling
+- **Mobile-First Design**: Updated UI specifications and implementation plan for mobile-first approach
+- **Navigation System**: Implemented responsive navigation with sidebar for desktop and bottom tabs for mobile
+- **Logo Implementation**: Created and integrated custom logo with proper sizing and positioning
+- **Database Seeding**: Implemented comprehensive database seeding with test data
+- **Authentication Flow**: Enhanced authentication with proper session handling and API key validation
+- **Pipedrive Integration**: Complete Pipedrive API integration with contact sync, organization management, and activity tracking
+- **Campaign Management**: Full campaign system with contact assignment and warmness scoring
+- **My-500 Feature**: Implemented My-500 contact management with filtering and search capabilities 

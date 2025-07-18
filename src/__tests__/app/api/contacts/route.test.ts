@@ -4,15 +4,22 @@ vi.mock('@/lib/auth', () => ({
   getServerSession: vi.fn(),
 }))
 
+// Mock the Pipedrive service
+vi.mock('@/server/services/pipedriveService', () => ({
+  createPipedriveService: vi.fn(),
+}))
+
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { GET, POST } from '@/app/api/contacts/route'
 import { ContactService } from '@/server/services/contactService'
 import { getServerSession } from '@/lib/auth'
+import { createPipedriveService } from '@/server/services/pipedriveService'
 import type { Contact, User } from '@prisma/client'
 
 const mockContactService = vi.mocked(ContactService)
 const mockGetServerSession = vi.mocked(getServerSession)
+const mockCreatePipedriveService = vi.mocked(createPipedriveService)
 
 describe('/api/contacts', () => {
   let mockContactServiceInstance: any
@@ -73,7 +80,7 @@ describe('/api/contacts', () => {
         contacts: [mockContact],
         pagination: {
           page: 1,
-          limit: 10,
+          limit: 20,
           total: 1,
           totalPages: 1,
         },
@@ -94,8 +101,13 @@ describe('/api/contacts', () => {
       expect(data.pagination).toEqual(mockResponse.pagination)
       expect(mockContactServiceInstance.getContacts).toHaveBeenCalledWith({
         page: 1,
-        limit: 10,
+        limit: 20,
         userId: mockUser.id,
+        query: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        country: undefined,
+        sector: undefined,
       })
     })
 
@@ -129,14 +141,12 @@ describe('/api/contacts', () => {
       expect(mockContactServiceInstance.getContacts).toHaveBeenCalledWith({
         page: 2,
         limit: 5,
-        name: 'John',
-        email: 'john@example.com',
-        organisation: 'Acme',
-        minWarmnessScore: 3,
-        maxWarmnessScore: 7,
-        campaignId: 'campaign-123',
-        addedToCampaign: true,
         userId: mockUser.id,
+        query: undefined,
+        sortBy: undefined,
+        sortOrder: undefined,
+        country: undefined,
+        sector: undefined,
       })
     })
 
@@ -378,6 +388,195 @@ describe('/api/contacts', () => {
       expect(response.status).toBe(400)
       expect(data).toEqual({ error: 'Invalid JSON' })
       expect(mockContactServiceInstance.createContact).not.toHaveBeenCalled()
+    })
+
+    it('should create a contact with last contacted date from Pipedrive', async () => {
+      // Arrange
+      const contactData = {
+        name: 'Pipedrive Contact',
+        email: 'pipedrive@example.com',
+        pipedrivePersonId: '12345',
+      }
+
+      const mockPipedriveService = {
+        getLastContactedDate: vi.fn().mockResolvedValue({
+          success: true,
+          lastContacted: new Date('2024-01-15T10:30:00Z'),
+        }),
+      }
+
+      mockCreatePipedriveService.mockResolvedValue(mockPipedriveService as any)
+      mockContactServiceInstance.createContact.mockResolvedValue({
+        ...mockContact,
+        ...contactData,
+        lastContacted: new Date('2024-01-15T10:30:00Z'),
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/contacts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(contactData),
+      })
+
+      // Act
+      const response = await POST(request)
+      const data = await response.json()
+
+      // Assert
+      expect(response.status).toBe(201)
+      expect(data.name).toBe(contactData.name)
+      expect(data.pipedrivePersonId).toBe('12345')
+      expect(data.lastContacted).toBeDefined()
+      expect(new Date(data.lastContacted)).toEqual(new Date('2024-01-15T10:30:00Z'))
+
+      // Verify Pipedrive service was called
+      expect(mockCreatePipedriveService).toHaveBeenCalledWith(mockUser.id)
+      expect(mockPipedriveService.getLastContactedDate).toHaveBeenCalledWith(12345)
+      expect(mockContactServiceInstance.createContact).toHaveBeenCalledWith({
+        ...contactData,
+        lastContacted: new Date('2024-01-15T10:30:00Z'),
+        userId: mockUser.id,
+      })
+    })
+
+    it('should create a contact without last contacted date when Pipedrive service fails', async () => {
+      // Arrange
+      const contactData = {
+        name: 'Failed Pipedrive Contact',
+        email: 'failed@example.com',
+        pipedrivePersonId: '67890',
+      }
+
+      const mockPipedriveService = {
+        getLastContactedDate: vi.fn().mockResolvedValue({
+          success: false,
+          error: 'API error',
+        }),
+      }
+
+      mockCreatePipedriveService.mockResolvedValue(mockPipedriveService as any)
+      mockContactServiceInstance.createContact.mockResolvedValue({
+        ...mockContact,
+        ...contactData,
+        lastContacted: null,
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/contacts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(contactData),
+      })
+
+      // Act
+      const response = await POST(request)
+      const data = await response.json()
+
+      // Assert
+      expect(response.status).toBe(201)
+      expect(data.name).toBe(contactData.name)
+      expect(data.pipedrivePersonId).toBe('67890')
+      expect(data.lastContacted).toBeNull()
+
+      // Verify Pipedrive service was still called
+      expect(mockCreatePipedriveService).toHaveBeenCalledWith(mockUser.id)
+      expect(mockPipedriveService.getLastContactedDate).toHaveBeenCalledWith(67890)
+      expect(mockContactServiceInstance.createContact).toHaveBeenCalledWith({
+        ...contactData,
+        lastContacted: undefined,
+        userId: mockUser.id,
+      })
+    })
+
+    it('should handle invalid pipedrivePersonId gracefully', async () => {
+      // Arrange
+      const contactData = {
+        name: 'Invalid Pipedrive Contact',
+        email: 'invalid@example.com',
+        pipedrivePersonId: 'not-a-number',
+      }
+
+      const mockPipedriveService = {
+        getLastContactedDate: vi.fn(),
+      }
+
+      mockCreatePipedriveService.mockResolvedValue(mockPipedriveService as any)
+      mockContactServiceInstance.createContact.mockResolvedValue({
+        ...mockContact,
+        ...contactData,
+        lastContacted: null,
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/contacts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(contactData),
+      })
+
+      // Act
+      const response = await POST(request)
+      const data = await response.json()
+
+      // Assert
+      expect(response.status).toBe(201)
+      expect(data.name).toBe(contactData.name)
+      expect(data.pipedrivePersonId).toBe('not-a-number')
+      expect(data.lastContacted).toBeNull()
+
+      // Verify Pipedrive service was created but getLastContactedDate was not called due to invalid ID
+      expect(mockCreatePipedriveService).toHaveBeenCalledWith(mockUser.id)
+      expect(mockPipedriveService.getLastContactedDate).not.toHaveBeenCalled()
+      expect(mockContactServiceInstance.createContact).toHaveBeenCalledWith({
+        ...contactData,
+        lastContacted: undefined,
+        userId: mockUser.id,
+      })
+    })
+
+    it('should continue contact creation when Pipedrive service throws an error', async () => {
+      // Arrange
+      const contactData = {
+        name: 'Error Pipedrive Contact',
+        email: 'error@example.com',
+        pipedrivePersonId: '99999',
+      }
+
+      mockCreatePipedriveService.mockRejectedValue(new Error('Pipedrive service error'))
+      mockContactServiceInstance.createContact.mockResolvedValue({
+        ...mockContact,
+        ...contactData,
+        lastContacted: null,
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/contacts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(contactData),
+      })
+
+      // Act
+      const response = await POST(request)
+      const data = await response.json()
+
+      // Assert
+      expect(response.status).toBe(201)
+      expect(data.name).toBe(contactData.name)
+      expect(data.pipedrivePersonId).toBe('99999')
+      expect(data.lastContacted).toBeNull()
+
+      // Verify contact creation still succeeded
+      expect(mockContactServiceInstance.createContact).toHaveBeenCalledWith({
+        ...contactData,
+        lastContacted: undefined,
+        userId: mockUser.id,
+      })
     })
   })
 }) 

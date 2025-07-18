@@ -19,7 +19,7 @@ export function EnhancedAuthFlow({
   requireApiKey = true,
   fallbackComponent
 }: EnhancedAuthFlowProps) {
-  const { status } = useSession();
+  const { status, data: session } = useSession();
   const router = useRouter();
   const [isApiKeyValid, setIsApiKeyValid] = useState<boolean | null>(null);
   const [isSetupDialogOpen, setIsSetupDialogOpen] = useState(false);
@@ -49,8 +49,8 @@ export function EnhancedAuthFlow({
     );
   }
 
-  // Handle unauthenticated users
-  if (status === "unauthenticated") {
+  // Handle unauthenticated users or invalid sessions
+  if (status === "unauthenticated" || !session?.user?.id) {
     if (fallbackComponent) {
       return <>{fallbackComponent}</>;
     }

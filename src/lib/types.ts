@@ -15,5 +15,20 @@ export interface CreateContactInput {
   pipedrivePersonId: string
   pipedriveOrgId: string | null
   lastPipedriveUpdate: Date | null
+  lastContacted: Date | null
+  
+  // New Pipedrive fields
+  lastActivityDate: Date | null
+  openDealsCount: number
+  closedDealsCount: number
+  wonDealsCount: number
+  lostDealsCount: number
+  activitiesCount: number
+  emailMessagesCount: number
+  lastIncomingMailTime: Date | null
+  lastOutgoingMailTime: Date | null
+  followersCount: number
+  jobTitle: string | null
+  
   userId: string
 } 

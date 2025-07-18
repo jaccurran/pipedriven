@@ -51,13 +51,40 @@ export class OrganizationService {
       })
     }
     if (existing) {
-      // Update if we have new information
+      // Update with new information if we have any
+      const updateData: Partial<CreateOrganizationData> = {}
+      
       if (orgData.pipedriveOrgId && !existing.pipedriveOrgId) {
+        updateData.pipedriveOrgId = orgData.pipedriveOrgId
+      }
+      
+      // Update other fields if we have new data and the existing field is null
+      if (orgData.industry && !existing.industry) {
+        updateData.industry = orgData.industry
+      }
+      if (orgData.country && !existing.country) {
+        updateData.country = orgData.country
+      }
+      if (orgData.size && !existing.size) {
+        updateData.size = orgData.size
+      }
+      if (orgData.website && !existing.website) {
+        updateData.website = orgData.website
+      }
+      if (orgData.address && !existing.address) {
+        updateData.address = orgData.address
+      }
+      if (orgData.city && !existing.city) {
+        updateData.city = orgData.city
+      }
+      
+      if (Object.keys(updateData).length > 0) {
         return await prisma.organization.update({
           where: { id: existing.id },
-          data: { pipedriveOrgId: orgData.pipedriveOrgId }
+          data: updateData
         })
       }
+      
       return existing
     }
     // Create new organization

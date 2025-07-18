@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PipedriveService, createPipedriveService } from '@/server/services/pipedriveService'
-import { prisma } from '../../setup'
+import { prisma } from '@/lib/prisma'
 import type { User, Contact, Activity, ActivityType } from '@prisma/client'
 import { encryptApiKey } from '@/lib/apiKeyEncryption'
 
@@ -588,6 +588,252 @@ describe('PipedriveService', () => {
       const service = await createPipedriveService(userWithInvalidKey.id)
 
       expect(service).toBeNull()
+    })
+  })
+
+  describe('getPersonActivities', () => {
+    it('should fetch activities for a person', async () => {
+      const mockActivities = [
+        {
+          id: 1,
+          subject: 'Follow up call',
+          type: 'call',
+          done: true,
+          done_time: '2024-01-15T10:30:00Z',
+          created: '2024-01-15T10:00:00Z',
+          updated: '2024-01-15T10:30:00Z',
+        },
+        {
+          id: 2,
+          subject: 'Email sent',
+          type: 'email',
+          done: true,
+          done_time: '2024-01-14T14:20:00Z',
+          created: '2024-01-14T14:00:00Z',
+          updated: '2024-01-14T14:20:00Z',
+        },
+      ]
+
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: mockActivities,
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getPersonActivities(123)
+
+      expect(result.success).toBe(true)
+      expect(result.activities).toEqual(mockActivities)
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.pipedrive.com/v1/activities?start=0&limit=100&person_id=123&api_token=test-api-key-123',
+        expect.objectContaining({
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+      )
+    })
+
+    it('should handle API errors gracefully', async () => {
+      const mockResponse = {
+        ok: false,
+        json: vi.fn().mockResolvedValue({
+          error: 'Person not found',
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getPersonActivities(999)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Person not found')
+    })
+
+    it('should handle pagination correctly', async () => {
+      const firstBatch = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        subject: `Activity ${i + 1}`,
+        type: 'call',
+        done: true,
+        done_time: '2024-01-15T10:30:00Z',
+        created: '2024-01-15T10:00:00Z',
+        updated: '2024-01-15T10:30:00Z',
+      }))
+
+      const secondBatch = Array.from({ length: 50 }, (_, i) => ({
+        id: i + 101,
+        subject: `Activity ${i + 101}`,
+        type: 'email',
+        done: true,
+        done_time: '2024-01-14T14:20:00Z',
+        created: '2024-01-14T14:00:00Z',
+        updated: '2024-01-14T14:20:00Z',
+      }))
+
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ data: firstBatch }),
+        } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ data: secondBatch }),
+        } as any)
+
+      const result = await service.getPersonActivities(123)
+
+      expect(result.success).toBe(true)
+      expect(result.activities).toHaveLength(150)
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('getLastContactedDate', () => {
+    it('should return the most recent completed activity date', async () => {
+      const mockActivities = [
+        {
+          id: 1,
+          subject: 'Follow up call',
+          type: 'call',
+          done: true,
+          done_time: '2024-01-15T10:30:00Z',
+          created: '2024-01-15T10:00:00Z',
+          updated: '2024-01-15T10:30:00Z',
+        },
+        {
+          id: 2,
+          subject: 'Email sent',
+          type: 'email',
+          done: true,
+          done_time: '2024-01-14T14:20:00Z',
+          created: '2024-01-14T14:00:00Z',
+          updated: '2024-01-14T14:20:00Z',
+        },
+        {
+          id: 3,
+          subject: 'Scheduled meeting',
+          type: 'meeting',
+          done: false,
+          created: '2024-01-16T09:00:00Z',
+          updated: '2024-01-16T09:00:00Z',
+        },
+      ]
+
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: mockActivities,
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getLastContactedDate(123)
+
+      expect(result.success).toBe(true)
+      expect(result.lastContacted).toEqual(new Date('2024-01-15T10:30:00Z'))
+    })
+
+    it('should return undefined when no completed activities exist', async () => {
+      const mockActivities = [
+        {
+          id: 1,
+          subject: 'Scheduled meeting',
+          type: 'meeting',
+          done: false,
+          created: '2024-01-16T09:00:00Z',
+          updated: '2024-01-16T09:00:00Z',
+        },
+      ]
+
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: mockActivities,
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getLastContactedDate(123)
+
+      expect(result.success).toBe(true)
+      expect(result.lastContacted).toBeUndefined()
+    })
+
+    it('should return undefined when no activities exist', async () => {
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: [],
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getLastContactedDate(123)
+
+      expect(result.success).toBe(true)
+      expect(result.lastContacted).toBeUndefined()
+    })
+
+    it('should handle API errors gracefully', async () => {
+      const mockResponse = {
+        ok: false,
+        json: vi.fn().mockResolvedValue({
+          error: 'Person not found',
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getLastContactedDate(999)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Person not found')
+    })
+
+    it('should sort activities by completion time correctly', async () => {
+      const mockActivities = [
+        {
+          id: 1,
+          subject: 'Old call',
+          type: 'call',
+          done: true,
+          done_time: '2024-01-10T10:30:00Z',
+          created: '2024-01-10T10:00:00Z',
+          updated: '2024-01-10T10:30:00Z',
+        },
+        {
+          id: 2,
+          subject: 'Recent email',
+          type: 'email',
+          done: true,
+          done_time: '2024-01-15T14:20:00Z',
+          created: '2024-01-15T14:00:00Z',
+          updated: '2024-01-15T14:20:00Z',
+        },
+        {
+          id: 3,
+          subject: 'Middle call',
+          type: 'call',
+          done: true,
+          done_time: '2024-01-12T11:30:00Z',
+          created: '2024-01-12T11:00:00Z',
+          updated: '2024-01-12T11:30:00Z',
+        },
+      ]
+
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: mockActivities,
+        }),
+      }
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+
+      const result = await service.getLastContactedDate(123)
+
+      expect(result.success).toBe(true)
+      expect(result.lastContacted).toEqual(new Date('2024-01-15T14:20:00Z'))
     })
   })
 }) 

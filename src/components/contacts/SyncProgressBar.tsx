@@ -14,8 +14,6 @@ interface SyncProgressData {
   percentage: number
   status: 'processing' | 'completed' | 'failed' | 'cancelled'
   errors: string[]
-  batchNumber?: number
-  totalBatches?: number
   // Enhanced fields
   startTime?: string
   estimatedTimeRemaining?: number
@@ -98,12 +96,23 @@ export const SyncProgressBar = memo(function SyncProgressBar({ syncId, onComplet
     status: 'processing',
     errors: [],
   })
+  
+  // Set initial progress immediately to show sync has started
+  useEffect(() => {
+    setProgress(prev => ({
+      ...prev,
+      status: 'processing',
+      percentage: 0,
+      processedContacts: 0,
+      totalContacts: 0
+    }))
+  }, [syncId])
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const [expandedErrors, setExpandedErrors] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
-  // Debounce progress updates
-  const debouncedProgress = useDebouncedProgress(progress)
+  // Debounce progress updates with shorter delay for more responsiveness
+  const debouncedProgress = useDebouncedProgress(progress, 50)
 
   // Check if mobile
   useEffect(() => {
@@ -299,7 +308,7 @@ export const SyncProgressBar = memo(function SyncProgressBar({ syncId, onComplet
         <div className="flex items-center space-x-2">
           <div className="flex items-center space-x-2">
             <h3 className="text-sm font-medium text-blue-800">
-              {connectionStatus === 'connecting' ? 'Connecting...' : getSyncTypeLabel(debouncedProgress.syncType)}
+              {connectionStatus === 'connecting' ? 'Starting sync...' : getSyncTypeLabel(debouncedProgress.syncType)}
             </h3>
             {/* Spinner for connecting/processing */}
             {connectionStatus === 'connecting' || debouncedProgress.status === 'processing' ? (
@@ -314,11 +323,7 @@ export const SyncProgressBar = memo(function SyncProgressBar({ syncId, onComplet
             {syncId}
           </Badge>
         </div>
-        {debouncedProgress.batchNumber && debouncedProgress.totalBatches && (
-          <Badge variant="secondary" className="text-xs">
-            Batch {debouncedProgress.batchNumber} of {debouncedProgress.totalBatches}
-          </Badge>
-        )}
+        {/* Removed batch-based progress since we're now tracking by individual contacts */}
       </div>
       <div className="mb-3">
         <div className="flex items-center justify-between mb-1">

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark rounded square background -->
+  <rect x="2" y="2" width="28" height="28" rx="4" fill="#1a1a1a"/>
+  
+  <!-- Bold "p" letter -->
+  <path d="M 9 8 L 9 24 L 12 24 L 12 19 L 16 19 L 19 24 L 22 24 L 19 19 L 16 16 L 12 16 L 12 8 Z" fill="white"/>
+  
+  <!-- "en" text positioned under the loop of the p - adjusted to fit properly -->
+  <text x="12" y="24" font-family="Arial, sans-serif" font-size="3.5" font-weight="bold" fill="white" text-anchor="middle">en</text>
+</svg> 

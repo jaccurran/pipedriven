@@ -6,11 +6,27 @@ export interface CreateContactData {
   email?: string
   phone?: string
   organisation?: string
+  organizationId?: string
   warmnessScore?: number
   lastContacted?: Date
   addedToCampaign?: boolean
   pipedrivePersonId?: string
   pipedriveOrgId?: string
+  lastPipedriveUpdate?: Date
+  
+  // New Pipedrive fields
+  lastActivityDate?: Date
+  openDealsCount?: number
+  closedDealsCount?: number
+  wonDealsCount?: number
+  lostDealsCount?: number
+  activitiesCount?: number
+  emailMessagesCount?: number
+  lastIncomingMailTime?: Date
+  lastOutgoingMailTime?: Date
+  followersCount?: number
+  jobTitle?: string
+  
   userId: string
 }
 

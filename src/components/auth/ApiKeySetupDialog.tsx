@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { clearApiKeyValidationCache } from './ApiKeyChecker'
 
 interface ApiKeySetupDialogProps {
   isOpen: boolean
@@ -10,7 +12,8 @@ interface ApiKeySetupDialogProps {
 }
 
 export function ApiKeySetupDialog({ isOpen, onSuccess, onCancel }: ApiKeySetupDialogProps) {
-  const { update: updateSession } = useSession()
+  const { update: updateSession, data: session } = useSession()
+  const router = useRouter()
   const [apiKey, setApiKey] = useState('')
   const [isValidating, setIsValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,8 +51,20 @@ export function ApiKeySetupDialog({ isOpen, onSuccess, onCancel }: ApiKeySetupDi
 
       const result = await response.json()
 
+      // Handle session invalidation
+      if (response.status === 401 && result.error?.includes('User session invalid')) {
+        console.log('Session invalid during API key setup, signing out user')
+        await signOut({ redirect: false })
+        router.push('/auth/signin')
+        return
+      }
+
       if (result.success) {
         setIsValid(true)
+        // Clear the validation cache for this user
+        if (session?.user?.id) {
+          clearApiKeyValidationCache(session.user.id)
+        }
         // Refresh the session to include the new API key
         await updateSession()
         // Call onSuccess after successful validation and save

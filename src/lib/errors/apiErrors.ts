@@ -111,11 +111,51 @@ export function withErrorHandling<T extends unknown[], R>(
 import { NextResponse } from 'next/server'
 
 export function createApiError(message: string, statusCode: number = 500, details?: Record<string, unknown>) {
-  return NextResponse.json({ success: false, error: message, code: 'UNKNOWN_ERROR', details }, { status: statusCode })
+  const response = {
+    success: false,
+    error: message,
+    code: 'UNKNOWN_ERROR',
+    details,
+    timestamp: new Date().toISOString()
+  }
+  
+  // Ensure the response is properly serializable
+  try {
+    JSON.stringify(response)
+  } catch (error) {
+    console.error('Failed to serialize error response:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Internal server error',
+      code: 'SERIALIZATION_ERROR',
+      timestamp: new Date().toISOString()
+    }, { status: 500 })
+  }
+  
+  return NextResponse.json(response, { status: statusCode })
 }
 
 export function createApiSuccess<T>(data: T, status: number = 200) {
-  return NextResponse.json({ success: true, data }, { status })
+  const response = {
+    success: true,
+    data,
+    timestamp: new Date().toISOString()
+  }
+  
+  // Ensure the response is properly serializable
+  try {
+    JSON.stringify(response)
+  } catch (error) {
+    console.error('Failed to serialize success response:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Response serialization failed',
+      code: 'SERIALIZATION_ERROR',
+      timestamp: new Date().toISOString()
+    }, { status: 500 })
+  }
+  
+  return NextResponse.json(response, { status })
 } 
 
 // Error response type

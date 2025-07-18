@@ -14,21 +14,29 @@ const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX = 10; // 10 requests per minute
 
 export async function POST(request: NextRequest) {
+  console.log('[Pipedrive Search] Starting search request');
+  
   try {
     const session = await getServerSession(authOptions);
+    console.log('[Pipedrive Search] Session user:', session?.user?.email || 'No session');
+    
     if (!session?.user?.id) {
+      console.log('[Pipedrive Search] Unauthorized - no session user ID');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { query } = await request.json();
+    console.log('[Pipedrive Search] Search query:', query);
     
     // Validate query
     if (!query || typeof query !== 'string') {
+      console.log('[Pipedrive Search] Invalid query:', query);
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
     // Minimum query length check
     if (query.trim().length < 3) {
+      console.log('[Pipedrive Search] Query too short:', query.trim().length);
       return NextResponse.json({ 
         error: 'Query must be at least 3 characters long',
         results: [] 
@@ -37,10 +45,12 @@ export async function POST(request: NextRequest) {
 
     const userId = session.user.id;
     const cacheKey = `${userId}:${query.toLowerCase().trim()}`;
+    console.log('[Pipedrive Search] Cache key:', cacheKey);
 
     // Check cache first
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log('[Pipedrive Search] Returning cached results:', cached.results.length, 'contacts');
       return NextResponse.json({ 
         results: cached.results,
         cached: true 
@@ -53,6 +63,7 @@ export async function POST(request: NextRequest) {
     
     if (userLimit && now < userLimit.resetTime) {
       if (userLimit.count >= RATE_LIMIT_MAX) {
+        console.log('[Pipedrive Search] Rate limit exceeded for user:', userId);
         return NextResponse.json({ 
           error: 'Rate limit exceeded. Please wait before searching again.',
           retryAfter: Math.ceil((userLimit.resetTime - now) / 1000)
@@ -67,26 +78,43 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's Pipedrive service
+    console.log('[Pipedrive Search] Creating Pipedrive service for user:', userId);
     const pipedriveService = await createPipedriveService(session.user.id);
     if (!pipedriveService) {
+      console.log('[Pipedrive Search] Failed to create Pipedrive service - no API key or invalid');
       return NextResponse.json({ 
         error: 'Pipedrive API key not configured or invalid',
         results: [] 
       }, { status: 400 });
     }
 
+    console.log('[Pipedrive Search] Pipedrive service created successfully');
+
     // Search Pipedrive
     const searchTerms = query.split(' ').filter(term => term.length > 0);
+    console.log('[Pipedrive Search] Search terms:', searchTerms);
+    
     const searchResults = await Promise.all(
       searchTerms.map(async (term: string) => {
-        const result = await pipedriveService.searchPersons(term)
-        return result
+        console.log('[Pipedrive Search] Searching for term:', term);
+        const result = await pipedriveService.searchPersons(term);
+        console.log('[Pipedrive Search] Search result for term', term, ':', result.length, 'contacts');
+        return result;
       })
-    )
+    );
+
+    const flattenedResults = searchResults.flat();
+    console.log('[Pipedrive Search] Total results after flattening:', flattenedResults.length);
+
+    // Deduplicate results by ID to prevent React key conflicts
+    const uniqueResults = flattenedResults.filter((contact, index, self) => 
+      index === self.findIndex(c => c.id === contact.id)
+    );
+    console.log('[Pipedrive Search] Unique results after deduplication:', uniqueResults.length);
 
     // Cache the results
     searchCache.set(cacheKey, {
-      results: searchResults.flat(), // Flatten all results from different search terms
+      results: uniqueResults,
       timestamp: now
     });
 
@@ -103,8 +131,9 @@ export async function POST(request: NextRequest) {
       .filter(([, limit]) => now > limit.resetTime);
     oldRateLimits.forEach(([key]) => userRateLimits.delete(key));
 
+    console.log('[Pipedrive Search] Returning results:', uniqueResults.length, 'contacts');
     return NextResponse.json({ 
-      results: searchResults.flat(), // Return flattened results
+      results: uniqueResults,
       cached: false 
     });
 

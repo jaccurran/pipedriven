@@ -17,6 +17,7 @@ interface ContactCardProps {
   onEdit?: (contact: ContactWithOrganization) => void
   onDelete?: (contact: ContactWithOrganization) => void
   onActivity?: (contactId: string, activityType: string) => void
+  onWarmnessUpdate?: (contactId: string, newScore: number) => void
   className?: string
 }
 
@@ -25,6 +26,7 @@ export function ContactCard({
   onEdit,
   onDelete,
   onActivity,
+  onWarmnessUpdate,
   className = '',
 }: ContactCardProps) {
   const formatDate = (date: Date | string | null | undefined) => {
@@ -133,11 +135,15 @@ export function ContactCard({
   }
 
   const [isUpdatingWarmness, setIsUpdatingWarmness] = useState(false)
+  const [localWarmnessScore, setLocalWarmnessScore] = useState(contact.warmnessScore)
 
   const handleWarmnessChange = async (newScore: number) => {
     if (newScore < 0 || newScore > 10) return
     
     setIsUpdatingWarmness(true)
+    // Optimistically update the local state
+    setLocalWarmnessScore(newScore)
+    
     try {
       const response = await fetch(`/api/contacts/${contact.id}`, {
         method: 'PUT',
@@ -148,12 +154,18 @@ export function ContactCard({
       })
 
       if (response.ok) {
-        // Trigger a page refresh to show updated data
-        window.location.reload()
+        // Call the callback to notify parent component
+        if (onWarmnessUpdate) {
+          onWarmnessUpdate(contact.id, newScore)
+        }
       } else {
+        // Revert the optimistic update if the API call failed
+        setLocalWarmnessScore(contact.warmnessScore)
         console.error('Failed to update warmness score')
       }
     } catch (error) {
+      // Revert the optimistic update if there was an error
+      setLocalWarmnessScore(contact.warmnessScore)
       console.error('Error updating warmness score:', error)
     } finally {
       setIsUpdatingWarmness(false)
@@ -271,7 +283,7 @@ export function ContactCard({
             className="text-xs sm:text-sm bg-blue-50 text-blue-700 border-blue-200"
             data-testid="warmness-badge"
           >
-            {getWarmnessText()} ({contact.warmnessScore}/10)
+            {getWarmnessText()} ({localWarmnessScore}/10)
           </Badge>
 
           {/* Campaign Status */}
@@ -304,11 +316,11 @@ export function ContactCard({
           </div>
           <div>
             <span className="font-medium" data-testid="warmness-label">Warmness:</span>
-            <span className="ml-1" data-testid="warmness-value">{contact.warmnessScore}/10</span>
+            <span className="ml-1" data-testid="warmness-value">{localWarmnessScore}/10</span>
             <div className="inline-flex items-center ml-2 space-x-1">
               <button
-                onClick={() => handleWarmnessChange(contact.warmnessScore - 1)}
-                disabled={isUpdatingWarmness || contact.warmnessScore <= 0}
+                onClick={() => handleWarmnessChange(localWarmnessScore - 1)}
+                disabled={isUpdatingWarmness || localWarmnessScore <= 0}
                 className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Decrease warmness score"
               >
@@ -317,8 +329,8 @@ export function ContactCard({
                 </svg>
               </button>
               <button
-                onClick={() => handleWarmnessChange(contact.warmnessScore + 1)}
-                disabled={isUpdatingWarmness || contact.warmnessScore >= 10}
+                onClick={() => handleWarmnessChange(localWarmnessScore + 1)}
+                disabled={isUpdatingWarmness || localWarmnessScore >= 10}
                 className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Increase warmness score"
               >

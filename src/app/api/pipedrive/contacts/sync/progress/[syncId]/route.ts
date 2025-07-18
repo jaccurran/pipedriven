@@ -20,8 +20,6 @@ interface SyncProgressData {
   percentage: number
   status: 'processing' | 'completed' | 'failed' | 'cancelled'
   errors: string[]
-  batchNumber?: number
-  totalBatches?: number
 }
 
 // Interface for SSE event
@@ -147,8 +145,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               percentage,
               status,
               errors: syncHistory.error ? [syncHistory.error] : [],
-              batchNumber: Math.ceil(processedContacts / 50), // Estimate based on batch size
-              totalBatches: Math.ceil(totalContacts / 50),
+              // Remove batch-based progress since we're now tracking by individual contacts
             }
 
             // Only send event if there's a change or it's the first poll
@@ -216,7 +213,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
 
             // Continue polling
-            setTimeout(pollProgress, 1000) // Poll every second
+            setTimeout(pollProgress, 500) // Poll every 500ms for more responsive updates
 
           } catch (error) {
             console.error('Error polling sync progress:', error)

@@ -109,6 +109,20 @@ export async function GET(request: NextRequest) {
       pipedrivePersonId: contact.pipedrivePersonId,
       pipedriveOrgId: contact.pipedriveOrgId,
       lastPipedriveUpdate: contact.lastPipedriveUpdate,
+      
+      // New Pipedrive fields
+      lastActivityDate: contact.lastActivityDate,
+      openDealsCount: contact.openDealsCount,
+      closedDealsCount: contact.closedDealsCount,
+      wonDealsCount: contact.wonDealsCount,
+      lostDealsCount: contact.lostDealsCount,
+      activitiesCount: contact.activitiesCount,
+      emailMessagesCount: contact.emailMessagesCount,
+      lastIncomingMailTime: contact.lastIncomingMailTime,
+      lastOutgoingMailTime: contact.lastOutgoingMailTime,
+      followersCount: contact.followersCount,
+      jobTitle: contact.jobTitle,
+      
       createdAt: contact.createdAt,
       updatedAt: contact.updatedAt,
       userId: contact.userId,

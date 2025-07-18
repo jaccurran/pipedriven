@@ -7,14 +7,12 @@ import type { ContactWithActivities } from '@/lib/my-500-data'
 import { useMy500Contacts, useSyncContacts, useSyncStatus } from '@/hooks/useMy500Contacts'
 import { useMy500Filters } from '@/hooks/useMy500Filters'
 import {
-  getContactPriority,
   getContactStatus,
   needsAttention
 } from '@/lib/my-500-data'
 import {
   getDaysSinceLastContact,
-  getActivityStatusColor,
-  getPriorityColor
+  getActivityStatusColor
 } from '@/lib/contactSorting'
 import { ActivityForm } from '@/components/activities/ActivityForm'
 import { Button, Modal, Input, Select } from '@/components/ui'
@@ -573,13 +571,14 @@ export function My500Client({
           ) : (
             <div className="space-y-4">
               {safeContacts.map((contact: ContactWithActivities) => {
-
-                
                 const status = getContactStatus(contact)
-                const priority = getContactPriority(contact)
                 const daysSinceContact = getDaysSinceLastContact(contact)
                 const attentionNeeded = needsAttention(contact)
-                
+                const orgName = contact.organization?.name || null
+                const sector = contact.organization?.industry || null
+                const country = contact.organization?.country || null
+                const warmnessScore = contact.warmnessScore
+
                 return (
                   <div
                     key={contact.id}
@@ -589,32 +588,42 @@ export function My500Client({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-lg text-gray-900">{contact.name}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${getActivityStatusColor(status)}`}>
-                            {status}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase border ${getPriorityColor(priority)}`}>
-                            {priority}
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${getActivityStatusColor(status)}`}>{status}</span>
+                          {/* Warmness Score Badge */}
+                          <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800" title="Warmness Score">
+                            🔥 {warmnessScore}
                           </span>
                         </div>
-                        
-                        <div className="text-sm text-gray-500 mt-1">
-                          {contact.organisation && <span className="mr-2">{contact.organisation}</span>}
-                          {contact.email && <span>{contact.email}</span>}
+                        {/* Organisation name below person name */}
+                        {orgName && (
+                          <div className="text-sm text-gray-700 font-medium mt-1" data-testid="org-name">
+                            {orgName}
+                          </div>
+                        )}
+                        {/* Sector and Country as badges */}
+                        <div className="flex gap-2 mt-2">
+                          {sector && (
+                            <span className="inline-block px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-medium" title="Sector">
+                              {sector}
+                            </span>
+                          )}
+                          {country && (
+                            <span className="inline-block px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="Country">
+                              {country}
+                            </span>
+                          )}
                         </div>
-                        
                         {attentionNeeded && (
                           <div className="mt-2 text-xs text-red-600 font-medium">
                             Needs attention
                           </div>
                         )}
-                        
                         {Array.isArray(contact.activities) && contact.activities.length > 0 && (
                           <div className="mt-1 text-xs text-gray-400">
                             Last activity: {contact.activities[0].type} - {contact.activities[0].subject}
                           </div>
                         )}
                       </div>
-                      
                       <div className="flex gap-1 ml-4">
                         <QuickActionButton
                           type="EMAIL"
@@ -637,7 +646,6 @@ export function My500Client({
                         />
                       </div>
                     </div>
-                    
                     <div className="mt-3 pt-3 border-t border-gray-100">
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <span>

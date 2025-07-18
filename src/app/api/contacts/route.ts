@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ContactService } from '@/server/services/contactService'
 import { getServerSession } from '@/lib/auth'
+
 import { z } from 'zod'
 
 // Validation schemas
@@ -10,7 +11,7 @@ const createContactSchema = z.object({
   phone: z.string().optional().or(z.literal('')),
   organisation: z.string().optional().or(z.literal('')),
   warmnessScore: z.number().min(0).max(10).optional(),
-  lastContacted: z.string().datetime().optional().or(z.literal('')),
+  lastContacted: z.string().datetime().optional().or(z.literal('')).or(z.date()),
   addedToCampaign: z.boolean().optional(),
   pipedrivePersonId: z.string().optional().or(z.literal('')),
   pipedriveOrgId: z.string().optional().or(z.literal('')),
@@ -129,11 +130,26 @@ export async function POST(request: NextRequest) {
 
     console.log('Clean contact data:', cleanData)
 
+    // If this is a Pipedrive contact, we'll let the sync process handle last contacted calculation
+    // For manual contact creation, we'll use the provided lastContacted or set to null
+    let lastContacted: Date | undefined = undefined
+    if (cleanData.pipedrivePersonId && typeof cleanData.pipedrivePersonId === 'string') {
+      // For manual contact creation, we'll use the provided lastContacted value
+      // The accurate calculation will happen during the next sync when we have all the data
+      if (cleanData.lastContacted) {
+        lastContacted = new Date(cleanData.lastContacted as string | number | Date)
+        console.log('Using provided last contacted date:', lastContacted)
+      } else {
+        console.log('No last contacted date provided, will be calculated during next sync')
+      }
+    }
+
     // Create service instance and create contact
     const contactService = new ContactService()
     const contact = await contactService.createContact({
       name: cleanData.name as string,
       ...cleanData,
+      lastContacted,
       userId: session.user.id,
     })
 

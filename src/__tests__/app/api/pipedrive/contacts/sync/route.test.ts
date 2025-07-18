@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { POST } from '@/app/api/pipedrive/contacts/sync/route'
 import { createPipedriveService } from '@/server/services/pipedriveService'
+import { OrganizationService } from '@/server/services/organizationService'
 
 vi.mock('next-auth')
 vi.mock('@/lib/prisma', () => ({
@@ -15,14 +16,25 @@ vi.mock('@/lib/prisma', () => ({
       update: vi.fn(),
       upsert: vi.fn(),
       count: vi.fn(),
+      // Add findFirst mock here
+      findFirst: vi.fn().mockImplementation((args) => {
+        if (args?.where?.pipedrivePersonId === '1') {
+          return Promise.resolve(mockLocalContacts[0])
+        }
+        return Promise.resolve(undefined)
+      }),
     },
     user: {
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    organization: {
+      update: vi.fn(),
+    },
     syncHistory: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      update: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -30,6 +42,12 @@ vi.mock('@/lib/prisma', () => ({
 
 vi.mock('@/server/services/pipedriveService', () => ({
   createPipedriveService: vi.fn(),
+}))
+
+vi.mock('@/server/services/organizationService', () => ({
+  OrganizationService: {
+    findOrCreateOrganization: vi.fn(),
+  },
 }))
 
 // Mount the API route handler
@@ -50,7 +68,17 @@ const mockPipedriveContacts = [
     name: 'Alice Johnson',
     email: [{ value: 'alice@example.com', primary: true }],
     phone: [{ value: '+1234567890', primary: true }],
-    org_id: 1,
+    org_id: {
+      value: 1,
+      name: 'Acme Corp',
+      address: '123 Main St',
+      people_count: 5,
+      owner_id: 925477,
+      active_flag: true,
+      cc_email: 'acme@pipedrivemail.com',
+      owner_name: 'John Curran'
+    },
+    org_name: 'Acme Corp',
     add_time: '2024-01-01T10:00:00Z',
     update_time: '2024-01-01T11:00:00Z',
   },
@@ -69,6 +97,12 @@ const mockPipedriveOrganizations = [
   {
     id: 1,
     name: 'Acme Corp',
+    address: '123 Main St',
+    country: 'United States',
+    industry: 'Technology',
+    size: '10-50',
+    website: 'https://acme.com',
+    city: 'San Francisco',
     add_time: '2024-01-01T09:00:00Z',
     update_time: '2024-01-01T10:00:00Z',
   }
@@ -98,12 +132,39 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       testConnection: vi.fn().mockResolvedValue({ success: true }),
       getPersons: vi.fn().mockResolvedValue({ success: true, persons: mockPipedriveContacts }),
       getOrganizations: vi.fn().mockResolvedValue({ success: true, organizations: mockPipedriveOrganizations }),
+      getOrganizationDetails: vi.fn().mockResolvedValue({ 
+        success: true, 
+        organization: mockPipedriveOrganizations[0] 
+      }),
     }
     vi.mocked(createPipedriveService).mockResolvedValue(mockPipedriveService)
     vi.mocked(prisma.contact.findMany).mockResolvedValue(mockLocalContacts)
+    
+    // Mock organization service
+    vi.mocked(OrganizationService.findOrCreateOrganization).mockResolvedValue({
+      id: 'org-1',
+      name: 'Acme Corp',
+      pipedriveOrgId: '1',
+      address: '123 Main St',
+      sector: 'Technology',
+      country: 'United States',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
     vi.mocked(prisma.contact.count).mockResolvedValue(2)
     vi.mocked(prisma.user.findUnique).mockResolvedValue(mockSession.user)
     vi.mocked(prisma.syncHistory.create).mockResolvedValue({
+      id: 'sync-1',
+      userId: 'user-123',
+      syncType: 'INCREMENTAL',
+      status: 'SUCCESS',
+      startTime: new Date(),
+      endTime: new Date(),
+      contactsProcessed: 2,
+      contactsUpdated: 1,
+      contactsFailed: 0,
+    })
+    vi.mocked(prisma.syncHistory.update).mockResolvedValue({
       id: 'sync-1',
       userId: 'user-123',
       syncType: 'INCREMENTAL',
@@ -123,16 +184,22 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
             if (args?.where?.pipedrivePersonId === '1') {
               return Promise.resolve(mockLocalContacts[0])
             }
+            // For all other pipedrivePersonIds, return undefined (contact doesn't exist)
             return Promise.resolve(undefined)
           }),
           update: vi.fn().mockImplementation(prisma.contact.update),
           create: vi.fn().mockImplementation(prisma.contact.create),
+          count: vi.fn().mockImplementation(prisma.contact.count),
         },
         user: {
           update: vi.fn().mockImplementation(prisma.user.update),
         },
+        organization: {
+          update: vi.fn().mockImplementation(prisma.organization.update),
+        },
         syncHistory: {
           create: vi.fn().mockImplementation(prisma.syncHistory.create),
+          update: vi.fn().mockImplementation(prisma.syncHistory.update),
         },
       }
       return callback(tx)
@@ -147,6 +214,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
     it('should return 401 if not authenticated', async () => {
       vi.mocked(getServerSession).mockResolvedValue(null)
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
       expect(res.status).toBe(401)
       expect(res.body.success).toBe(false)
       expect(res.body.error).toMatch(/auth/i)
@@ -157,6 +225,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
         user: { ...mockSession.user, pipedriveApiKey: null }
       })
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
       expect(res.status).toBe(400)
       expect(res.body.success).toBe(false)
       expect(res.body.error).toMatch(/pipedrive.*key/i)
@@ -171,6 +240,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
       expect(res.body.success).toBe(true)
@@ -186,6 +256,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'INCREMENTAL', sinceTimestamp: '2024-01-01T10:00:00Z' })
 
       expect(res.status).toBe(200)
       expect(res.body.success).toBe(true)
@@ -212,9 +283,10 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
-      expect(res.body.data.contactsCreated).toBe(1)
+      expect(res.body.data.results.created).toBe(1)
       expect(prisma.contact.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -240,9 +312,10 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
-      expect(res.body.data.contactsUpdated).toBe(1)
+      expect(res.body.data.results.updated).toBe(1)
       expect(prisma.contact.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'contact-1' },
@@ -259,7 +332,17 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
         name: 'Charlie Brown',
         email: [{ value: 'charlie@example.com', primary: true }],
         phone: [],
-        org_id: 1,
+        org_id: {
+          value: 2,
+          name: 'Tech Solutions',
+          address: '456 Tech Ave',
+          people_count: 3,
+          owner_id: 925477,
+          active_flag: true,
+          cc_email: 'tech@pipedrivemail.com',
+          owner_name: 'John Curran'
+        },
+        org_name: 'Tech Solutions',
         add_time: '2024-01-03T10:00:00Z',
         update_time: '2024-01-03T11:00:00Z',
       }
@@ -270,13 +353,262 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
+      expect(OrganizationService.findOrCreateOrganization).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Tech Solutions',
+          pipedriveOrgId: '2',
+          address: '456 Tech Ave'
+        })
+      )
       expect(prisma.contact.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            pipedriveOrgId: '1'
+            pipedriveOrgId: '2',
+            organizationId: 'org-1'
           })
+        })
+      )
+    })
+
+    it('should create organization and link contact when organization does not exist', async () => {
+      const contactWithNewOrg = {
+        id: 4,
+        name: 'David Wilson',
+        email: [{ value: 'david@newcompany.com', primary: true }],
+        phone: [],
+        org_id: {
+          value: 3,
+          name: 'New Company Ltd',
+          address: '789 New St',
+          people_count: 1,
+          owner_id: 925477,
+          active_flag: true,
+          cc_email: 'new@pipedrivemail.com',
+          owner_name: 'John Curran'
+        },
+        org_name: 'New Company Ltd',
+        add_time: '2024-01-04T10:00:00Z',
+        update_time: '2024-01-04T11:00:00Z',
+      }
+
+      mockPipedriveService.getPersons.mockResolvedValue({
+        success: true,
+        persons: [contactWithNewOrg]
+      })
+
+      // Mock that organization doesn't exist initially
+      vi.mocked(OrganizationService.findOrCreateOrganization).mockResolvedValueOnce({
+        id: 'org-2',
+        name: 'New Company Ltd',
+        pipedriveOrgId: '3',
+        address: '789 New St',
+        sector: 'Consulting',
+        country: 'United Kingdom',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
+
+      expect(res.status).toBe(200)
+      expect(OrganizationService.findOrCreateOrganization).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'New Company Ltd',
+          pipedriveOrgId: '3',
+          address: '789 New St'
+        })
+      )
+      expect(prisma.contact.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            pipedriveOrgId: '3',
+            organizationId: 'org-2'
+          })
+        })
+      )
+    })
+
+    it('should fetch organization details from Pipedrive for new organizations', async () => {
+      const contactWithNewOrg = {
+        id: 5,
+        name: 'Eve Johnson',
+        email: [{ value: 'eve@startup.com', primary: true }],
+        phone: [],
+        org_id: {
+          value: 4,
+          name: 'Startup Inc',
+          address: null,
+          people_count: 2,
+          owner_id: 925477,
+          active_flag: true,
+          cc_email: 'startup@pipedrivemail.com',
+          owner_name: 'John Curran'
+        },
+        org_name: 'Startup Inc',
+        add_time: '2024-01-05T10:00:00Z',
+        update_time: '2024-01-05T11:00:00Z',
+      }
+
+      mockPipedriveService.getPersons.mockResolvedValue({
+        success: true,
+        persons: [contactWithNewOrg]
+      })
+
+      // Mock organization creation
+      vi.mocked(OrganizationService.findOrCreateOrganization).mockResolvedValueOnce({
+        id: 'org-3',
+        name: 'Startup Inc',
+        pipedriveOrgId: '4',
+        address: null,
+        sector: null,
+        country: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      // Mock organization details from Pipedrive
+      mockPipedriveService.getOrganizationDetails.mockResolvedValueOnce({
+        success: true,
+        organization: {
+          id: 4,
+          name: 'Startup Inc',
+          address: '321 Startup Blvd',
+          country: 'Canada',
+          industry: 'Software',
+          size: '2-10',
+          website: 'https://startup.com',
+          city: 'Toronto',
+          add_time: '2024-01-05T09:00:00Z',
+          update_time: '2024-01-05T10:00:00Z',
+        }
+      })
+
+      const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
+
+      expect(res.status).toBe(200)
+      expect(mockPipedriveService.getOrganizationDetails).toHaveBeenCalledWith(4)
+    })
+
+    it('should handle organization API failures gracefully', async () => {
+      const contactWithOrg = {
+        id: 6,
+        name: 'Frank Miller',
+        email: [{ value: 'frank@company.com', primary: true }],
+        phone: [],
+        org_id: {
+          value: 5,
+          name: 'Company Corp',
+          address: '123 Company St',
+          people_count: 1,
+          owner_id: 925477,
+          active_flag: true,
+          cc_email: 'company@pipedrivemail.com',
+          owner_name: 'John Curran'
+        },
+        org_name: 'Company Corp',
+        add_time: '2024-01-06T10:00:00Z',
+        update_time: '2024-01-06T11:00:00Z',
+      }
+
+      mockPipedriveService.getPersons.mockResolvedValue({
+        success: true,
+        persons: [contactWithOrg]
+      })
+
+      // Mock organization creation succeeds but API call fails
+      vi.mocked(OrganizationService.findOrCreateOrganization).mockResolvedValueOnce({
+        id: 'org-4',
+        name: 'Company Corp',
+        pipedriveOrgId: '5',
+        address: '123 Company St',
+        sector: null,
+        country: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      mockPipedriveService.getOrganizationDetails.mockRejectedValueOnce(
+        new Error('Rate limit exceeded')
+      )
+
+      const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
+
+      expect(res.status).toBe(200)
+      expect(res.body.data.results.processed).toBe(1)
+      // Contact should still be created even if organization details fetch fails
+      expect(prisma.contact.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            pipedriveOrgId: '5',
+            organizationId: 'org-4'
+          })
+        })
+      )
+    })
+
+    it('should cache organizations to avoid duplicate API calls', async () => {
+      const contactsWithSameOrg = [
+        {
+          id: 7,
+          name: 'Grace Lee',
+          email: [{ value: 'grace@shared.com', primary: true }],
+          phone: [],
+          org_id: {
+            value: 6,
+            name: 'Shared Organization',
+            address: '456 Shared Ave',
+            people_count: 3,
+            owner_id: 925477,
+            active_flag: true,
+            cc_email: 'shared@pipedrivemail.com',
+            owner_name: 'John Curran'
+          },
+          org_name: 'Shared Organization',
+          add_time: '2024-01-07T10:00:00Z',
+          update_time: '2024-01-07T11:00:00Z',
+        },
+        {
+          id: 8,
+          name: 'Henry Brown',
+          email: [{ value: 'henry@shared.com', primary: true }],
+          phone: [],
+          org_id: {
+            value: 6,
+            name: 'Shared Organization',
+            address: '456 Shared Ave',
+            people_count: 3,
+            owner_id: 925477,
+            active_flag: true,
+            cc_email: 'shared@pipedrivemail.com',
+            owner_name: 'John Curran'
+          },
+          org_name: 'Shared Organization',
+          add_time: '2024-01-08T10:00:00Z',
+          update_time: '2024-01-08T11:00:00Z',
+        }
+      ]
+
+      mockPipedriveService.getPersons.mockResolvedValue({
+        success: true,
+        persons: contactsWithSameOrg
+      })
+
+      const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
+
+      expect(res.status).toBe(200)
+      // Organization should only be created once, not twice
+      expect(OrganizationService.findOrCreateOrganization).toHaveBeenCalledTimes(1)
+      expect(OrganizationService.findOrCreateOrganization).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Shared Organization',
+          pipedriveOrgId: '6'
         })
       )
     })
@@ -287,6 +619,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       mockPipedriveService.testConnection.mockResolvedValue({ success: false, error: 'Connection failed' })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(400)
       expect(res.body.success).toBe(false)
@@ -297,6 +630,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       mockPipedriveService.getPersons.mockRejectedValue(new Error('API rate limit exceeded'))
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(500)
       expect(res.body.success).toBe(false)
@@ -307,6 +641,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       vi.mocked(prisma.$transaction).mockRejectedValue(new Error('Database error'))
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(500)
       expect(res.body.success).toBe(false)
@@ -318,24 +653,23 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       vi.mocked(prisma.contact.create).mockRejectedValueOnce(new Error('Validation error'))
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
-      expect(res.body.data.contactsFailed).toBeGreaterThan(0)
-      expect(res.body.data.contactsProcessed).toBeGreaterThan(res.body.data.contactsFailed)
+      expect(res.body.data.results.failed).toBeGreaterThan(0)
+      expect(res.body.data.results.processed).toBeGreaterThan(res.body.data.results.failed)
     })
   })
 
   describe('Sync Statistics', () => {
     it('should return accurate sync statistics', async () => {
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
       expect(res.body.data).toMatchObject({
         syncType: expect.any(String),
-        contactsProcessed: expect.any(Number),
-        contactsCreated: expect.any(Number),
-        contactsUpdated: expect.any(Number),
-        contactsFailed: expect.any(Number),
+        results: expect.any(Object),
         syncDuration: expect.any(Number),
         lastSyncTimestamp: expect.any(String)
       })
@@ -343,6 +677,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
 
     it('should update user last sync timestamp', async () => {
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
       expect(prisma.user.update).toHaveBeenCalledWith({
@@ -353,16 +688,19 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
 
     it('should create sync history record', async () => {
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
       expect(prisma.syncHistory.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: 'user-123',
           syncType: expect.any(String),
-          status: 'SUCCESS',
-          contactsProcessed: expect.any(Number),
-          contactsUpdated: expect.any(Number),
-          contactsFailed: expect.any(Number)
+          status: 'PENDING',
+          totalContacts: expect.any(Number),
+          contactsProcessed: 0,
+          contactsUpdated: 0,
+          contactsCreated: 0,
+          contactsFailed: 0,
         })
       })
     })
@@ -373,10 +711,11 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       mockPipedriveService.getPersons.mockResolvedValue({ success: true, persons: [] })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
-      expect(res.body.data.contactsProcessed).toBe(0)
-      expect(res.body.data.contactsCreated).toBe(0)
+      expect(res.body.data.results.processed).toBe(0)
+      expect(res.body.data.results.created).toBe(0)
     })
 
     it('should handle contacts with missing email', async () => {
@@ -396,6 +735,7 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
       expect(prisma.contact.create).toHaveBeenCalledWith(
@@ -427,8 +767,10 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
       expect(prisma.contact.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -455,10 +797,11 @@ describe('/api/pipedrive/contacts/sync endpoint', () => {
       })
 
       const res = await request(app).post('/api/pipedrive/contacts/sync')
+        .send({ syncType: 'FULL' })
 
       expect(res.status).toBe(200)
-      expect(res.body.data.contactsProcessed).toBe(100)
-      expect(res.body.data.contactsCreated).toBe(99) // One contact (id: 1) already exists
+      expect(res.body.data.results.processed).toBe(100)
+      expect(res.body.data.results.created).toBe(99) // One contact (id: 1) already exists
     })
   })
 }) 

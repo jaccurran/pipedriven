@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 // import { EnhancedAuthFlow } from "@/components/auth/EnhancedAuthFlow"; // Remove from global layout
 
 const geistSans = Geist({
@@ -18,6 +19,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Pipedriven - Early-Stage Lead Sourcing",
   description: "AI-powered lead sourcing system integrated with Pipedrive",
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -30,11 +36,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <SessionProvider>
-          <QueryProvider>
-            {children}
-          </QueryProvider>
-        </SessionProvider>
+        <ErrorBoundary>
+          <SessionProvider>
+            <QueryProvider>
+              {children}
+            </QueryProvider>
+          </SessionProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

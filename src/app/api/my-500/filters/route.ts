@@ -42,7 +42,7 @@ export async function GET() {
 
     organizations.forEach(org => {
       // Add country if available
-      if (org.country) {
+      if (org.country && typeof org.country === 'string') {
         countries.add(org.country)
       } else if (org.address) {
         // Try to extract country from address as fallback
@@ -54,8 +54,8 @@ export async function GET() {
       }
 
       // Add industry/sector if available
-      if (org.industry) {
-        sectors.add(org.industry)
+      if ((org as unknown as Record<string, unknown>).industry && typeof (org as unknown as Record<string, unknown>).industry === 'string') {
+        sectors.add((org as unknown as Record<string, unknown>).industry as string)
       }
     })
 

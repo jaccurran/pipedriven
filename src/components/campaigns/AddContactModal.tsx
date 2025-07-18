@@ -11,10 +11,10 @@ import { Badge } from "@/components/ui/Badge";
 interface Contact {
   id: string | number;
   name: string;
-  email?: string;
+  email?: string | Array<{ label: string; value: string; primary: boolean }>;
   organization?: string;
   jobTitle?: string;
-  phone?: string;
+  phone?: string | Array<{ label: string; value: string; primary: boolean }>;
   warmnessScore?: number;
   source?: "local" | "pipedrive";
   pipedrivePersonId?: string;
@@ -72,12 +72,27 @@ export function AddContactModal({
   // Trigger Pipedrive search when debounced query changes
   useEffect(() => {
     const trimmedQuery = debouncedSearchQuery.trim();
+    console.log('[AddContactModal] Debounced query changed:', trimmedQuery);
+    
     // Only search if query is at least 3 chars
-    if (trimmedQuery.length < 3) return;
+    if (trimmedQuery.length < 3) {
+      console.log('[AddContactModal] Query too short, skipping search');
+      return;
+    }
+    
     // Only search if query changed
-    if (lastSearchedQuery.current === trimmedQuery) return;
+    if (lastSearchedQuery.current === trimmedQuery) {
+      console.log('[AddContactModal] Query unchanged, skipping search');
+      return;
+    }
+    
     // If cached, don't call backend
-    if (pipedriveCache.current[trimmedQuery]) return;
+    if (pipedriveCache.current[trimmedQuery]) {
+      console.log('[AddContactModal] Using cached results for query:', trimmedQuery);
+      return;
+    }
+    
+    console.log('[AddContactModal] Calling onSearchPipedrive with query:', trimmedQuery);
     onSearchPipedrive(trimmedQuery);
     lastSearchedQuery.current = trimmedQuery;
   }, [debouncedSearchQuery, onSearchPipedrive]);
@@ -86,6 +101,7 @@ export function AddContactModal({
   useEffect(() => {
     const trimmedQuery = debouncedSearchQuery.trim();
     if (trimmedQuery.length >= 3 && pipedriveContacts.length > 0) {
+      console.log('[AddContactModal] Caching', pipedriveContacts.length, 'contacts for query:', trimmedQuery);
       pipedriveCache.current[trimmedQuery] = pipedriveContacts;
     }
   }, [debouncedSearchQuery, pipedriveContacts]);
@@ -105,21 +121,39 @@ export function AddContactModal({
     const trimmedQuery = debouncedSearchQuery.trim();
     if (!trimmedQuery) return [];
     
-    return localContacts.filter(contact =>
-      contact.name.toLowerCase().includes(trimmedQuery.toLowerCase()) ||
-      (contact.email?.toLowerCase().includes(trimmedQuery.toLowerCase()) ?? false)
-    );
+    return localContacts.filter(contact => {
+      const nameMatch = contact.name.toLowerCase().includes(trimmedQuery.toLowerCase());
+      const emailMatch = Array.isArray(contact.email) 
+        ? contact.email[0]?.value?.toLowerCase().includes(trimmedQuery.toLowerCase()) ?? false
+        : contact.email?.toLowerCase().includes(trimmedQuery.toLowerCase()) ?? false;
+      
+      return nameMatch || emailMatch;
+    });
   }, [localContacts, debouncedSearchQuery]);
 
   // Memoize deduplicated Pipedrive contacts
   const deduplicatedPipedriveContacts = useMemo(() => {
     return pipedriveContacts.filter(pipedriveContact => {
       // Check if this Pipedrive contact already exists in local contacts
-      const isDuplicate = localContacts.some(localContact => 
-        localContact.email === pipedriveContact.email ||
-        localContact.id === pipedriveContact.id ||
-        (localContact.pipedrivePersonId && localContact.pipedrivePersonId === pipedriveContact.id.toString())
-      );
+      const isDuplicate = localContacts.some(localContact => {
+        // Compare by ID
+        if (localContact.id === pipedriveContact.id) return true;
+        
+        // Compare by Pipedrive person ID
+        if (localContact.pipedrivePersonId && localContact.pipedrivePersonId === pipedriveContact.id.toString()) return true;
+        
+        // Compare by email
+        const pipedriveEmail = Array.isArray(pipedriveContact.email) 
+          ? pipedriveContact.email[0]?.value 
+          : pipedriveContact.email;
+        const localEmail = Array.isArray(localContact.email) 
+          ? localContact.email[0]?.value 
+          : localContact.email;
+        
+        if (pipedriveEmail && localEmail && pipedriveEmail === localEmail) return true;
+        
+        return false;
+      });
       return !isDuplicate;
     });
   }, [pipedriveContacts, localContacts]);
@@ -177,13 +211,17 @@ export function AddContactModal({
           {/* Unified Results List */}
           {hasResults && (
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {allResults.map((contact) => (
-                <Card key={contact.id} className="p-3 cursor-pointer hover:bg-gray-50" onClick={() => handleContactSelect(contact)}>
+              {allResults.map((contact, index) => (
+                <Card key={`${contact.source || 'local'}-${contact.id}-${index}`} className="p-3 cursor-pointer hover:bg-gray-50" onClick={() => handleContactSelect(contact)}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="font-medium">{contact.name}</div>
                       {contact.email && (
-                        <div className="text-sm text-gray-600">{contact.email}</div>
+                        <div className="text-sm text-gray-600">
+                          {Array.isArray(contact.email) 
+                            ? (contact.email[0]?.value || '')
+                            : contact.email}
+                        </div>
                       )}
                       {contact.organization && (
                         <div className="text-sm text-gray-500">{contact.organization}</div>
