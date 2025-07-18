@@ -18,6 +18,24 @@ const nextConfig: NextConfig = {
     
     return config;
   },
+  // Ensure static assets are properly handled
+  experimental: {
+    optimizePackageImports: ['next-auth']
+  },
+  // Add headers for static assets
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

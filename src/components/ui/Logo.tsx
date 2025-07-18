@@ -33,6 +33,13 @@ export function Logo({ size = 'md', className = '' }: LogoProps) {
         priority
         onError={(e) => {
           console.error('Logo failed to load:', e);
+          // Fallback to text if image fails
+          const target = e.target as HTMLImageElement;
+          target.style.display = 'none';
+          const parent = target.parentElement;
+          if (parent) {
+            parent.innerHTML = '<span class="text-white font-bold text-xs">PD</span>';
+          }
         }}
       />
     </div>
