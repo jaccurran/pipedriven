@@ -130,7 +130,7 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
 
   return (
     <>
-      <div style={{ display: 'inline-block', position: 'relative' }}>
+      <div className="relative inline-block">
         <button
           ref={buttonRef}
           aria-haspopup="menu"
@@ -139,7 +139,7 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
           type="button"
           onClick={() => setOpen((v) => !v)}
           onKeyDown={handleButtonKeyDown}
-          style={{ padding: '0.5rem', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '1.5rem' }}
+          className="p-3 sm:p-2 rounded-full border border-gray-300 bg-white hover:bg-gray-50 cursor-pointer text-2xl sm:text-xl transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center"
         >
           &#x22EE;
         </button>
@@ -149,18 +149,7 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
             role="menu"
             aria-label="Secondary actions"
             tabIndex={-1}
-            style={{
-              position: 'absolute',
-              right: 0,
-              zIndex: 10,
-              background: 'white',
-              border: '1px solid #ddd',
-              borderRadius: '0.5rem',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              minWidth: '180px',
-              marginTop: '0.5rem',
-              outline: 'none',
-            }}
+            className="absolute right-0 z-10 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] sm:min-w-[180px] mt-2 outline-none"
           >
             {actions.map((action, idx) => (
               <button
@@ -168,22 +157,11 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
                 role="menuitem"
                 tabIndex={0}
                 aria-label={action.label}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  background: 'none',
-                  border: 'none',
-                  textAlign: 'left',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  outline: 'none',
-                }}
+                className="flex items-center w-full px-4 py-3 sm:px-3 sm:py-2 bg-none border-none text-left text-sm sm:text-base cursor-pointer outline-none hover:bg-gray-50 focus:bg-gray-50 transition-colors duration-150 min-h-[44px] sm:min-h-[36px]"
                 onClick={() => handleActionSelect(action.type)}
                 onKeyDown={(e) => handleMenuKeyDown(e, idx)}
               >
-                <span style={{ marginRight: '0.75rem', fontSize: '1.25rem' }}>{action.icon}</span>
+                <span className="mr-3 sm:mr-2 text-xl sm:text-lg">{action.icon}</span>
                 {action.label}
               </button>
             ))}
@@ -193,56 +171,36 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
 
       {/* Action Modal */}
       {selectedAction && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-        >
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div
             ref={modalRef}
             role="dialog"
             aria-label={`${actions.find(a => a.type === selectedAction)?.label} Action`}
-            style={{
-              background: 'white',
-              padding: '2rem',
-              borderRadius: '0.5rem',
-              minWidth: '400px',
-              maxWidth: '500px',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-            }}
+            className="bg-white p-6 sm:p-4 rounded-lg min-w-[320px] sm:min-w-[400px] max-w-[500px] w-full max-h-[90vh] overflow-y-auto shadow-xl"
           >
-            <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.5rem' }}>
+            <h2 className="text-xl sm:text-lg font-semibold mb-4 sm:mb-3">
               {actions.find(a => a.type === selectedAction)?.label} Action
             </h2>
             
-            <div style={{ marginBottom: '1rem' }}>
-              <label htmlFor="contact-name" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+            <div className="mb-4 sm:mb-3">
+              <label htmlFor="contact-name" className="block mb-2 font-medium text-sm">
                 Contact
               </label>
               {editingContact ? (
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-1 items-center">
                   <input
                     id="contact-name"
                     aria-label="Edit contact name"
                     type="text"
                     value={editedContactName}
                     onChange={e => setEditedContactName(e.target.value)}
-                    style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '0.25rem' }}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
                     onClick={handleContactEditSave}
                     aria-label="Save contact"
-                    style={{ padding: '0.5rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
+                    className="px-4 py-2 bg-blue-600 text-white border-none rounded-md cursor-pointer text-sm hover:bg-blue-700 transition-colors duration-200 min-h-[44px] sm:min-h-[36px]"
                   >
                     Save Contact
                   </button>
@@ -250,7 +208,7 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
                     type="button"
                     onClick={handleContactEditCancel}
                     aria-label="Cancel edit"
-                    style={{ padding: '0.5rem', background: 'white', color: '#333', border: '1px solid #ddd', borderRadius: '0.25rem', cursor: 'pointer' }}
+                    className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md cursor-pointer text-sm hover:bg-gray-50 transition-colors duration-200 min-h-[44px] sm:min-h-[36px]"
                   >
                     Cancel Edit
                   </button>
@@ -258,23 +216,15 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
               ) : (
                 <button
                   onClick={handleContactEdit}
-                  style={{
-                    background: 'none',
-                    border: '1px solid #ddd',
-                    padding: '0.5rem',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer',
-                    width: '100%',
-                    textAlign: 'left',
-                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md cursor-pointer text-left text-sm hover:bg-gray-50 transition-colors duration-200 min-h-[44px] sm:min-h-[36px]"
                 >
                   {editedContactName || 'No contact selected'}
                 </button>
               )}
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label htmlFor="note" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+            <div className="mb-6 sm:mb-4">
+              <label htmlFor="note" className="block mb-2 font-medium text-sm">
                 Note
               </label>
               <textarea
@@ -282,45 +232,25 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add a note about this action..."
-                style={{
-                  width: '100%',
-                  minHeight: '100px',
-                  padding: '0.5rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '0.25rem',
-                  resize: 'vertical',
-                }}
+                className="w-full min-h-[100px] px-3 py-2 border border-gray-300 rounded-md resize-vertical text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 justify-end">
               <button
                 onClick={() => {
                   setSelectedAction(null)
                   setNote('')
                 }}
-                style={{
-                  padding: '0.5rem 1rem',
-                  border: '1px solid #ddd',
-                  background: 'white',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                }}
+                className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer text-sm hover:bg-gray-50 transition-colors duration-200 min-h-[44px] sm:min-h-[36px]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
-                style={{
-                  padding: '0.5rem 1rem',
-                  border: 'none',
-                  background: '#007bff',
-                  color: 'white',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                }}
+                className="px-4 py-2 border-none bg-blue-600 text-white rounded-md cursor-pointer text-sm hover:bg-blue-700 transition-colors duration-200 min-h-[44px] sm:min-h-[36px]"
               >
-                Save
+                Submit
               </button>
             </div>
           </div>

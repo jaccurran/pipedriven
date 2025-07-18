@@ -386,7 +386,7 @@ export function My500Client({
 
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Sync Progress Bar */}
       {showProgressBar && syncId && (
         <div className="mb-4">
@@ -432,11 +432,11 @@ export function My500Client({
             </p>
           )}
         </div>
-        <div className="mt-4 sm:mt-0 flex gap-2">
+        <div className="mt-4 sm:mt-0 flex flex-col sm:flex-row gap-2">
           <Button
             onClick={handleSync}
             disabled={isSyncing}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
           >
             {isSyncing ? (
               <div className="flex items-center gap-2">
@@ -451,7 +451,7 @@ export function My500Client({
             onClick={() => handleSync(true)} // Force full sync
             disabled={isSyncing}
             variant="outline"
-            className="text-gray-600 border-gray-300 hover:bg-gray-50"
+            className="text-gray-600 border-gray-300 hover:bg-gray-50 w-full sm:w-auto"
           >
             {isSyncing ? 'Syncing...' : 'Force Full Sync'}
           </Button>
@@ -460,8 +460,8 @@ export function My500Client({
 
       {/* Search and Filters */}
       <div className="mb-6 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 min-w-0" style={{ flexBasis: '150%' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="sm:col-span-2 lg:col-span-1">
             <Input
               type="text"
               placeholder="Search contacts by name, email, or organization..."
@@ -477,7 +477,7 @@ export function My500Client({
               { value: '', label: 'All Contacts' },
               { value: 'campaign', label: 'Campaign Contacts' }
             ]}
-            className="w-full sm:w-48"
+            className="w-full"
           />
           <Select
             value={country}
@@ -489,7 +489,7 @@ export function My500Client({
                 label: country
               }))
             ]}
-            className="w-full sm:w-48"
+            className="w-full"
             disabled={filtersLoading}
           />
           <Select
@@ -502,7 +502,7 @@ export function My500Client({
                 label: sector
               }))
             ]}
-            className="w-full sm:w-48"
+            className="w-full"
             disabled={filtersLoading}
           />
           <Select
@@ -519,7 +519,7 @@ export function My500Client({
               { value: 'createdAt-desc', label: 'Created (Newest)' },
               { value: 'createdAt-asc', label: 'Created (Oldest)' }
             ]}
-            className="w-full sm:w-48"
+            className="w-full"
           />
         </div>
       </div>
@@ -569,7 +569,7 @@ export function My500Client({
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 sm:space-y-6">
               {safeContacts.map((contact: ContactWithActivities) => {
                 const status = getContactStatus(contact)
                 const daysSinceContact = getDaysSinceLastContact(contact)
@@ -582,73 +582,88 @@ export function My500Client({
                 return (
                   <div
                     key={contact.id}
-                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow"
                   >
-                    <div className="flex items-start justify-between">
+                    {/* Header Section */}
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-lg text-gray-900">{contact.name}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${getActivityStatusColor(status)}`}>{status}</span>
+                        {/* Name and Status Row */}
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className="font-semibold text-lg sm:text-xl text-gray-900 break-words">{contact.name}</span>
+                          <span className={`px-2 py-1 rounded text-xs font-medium uppercase ${getActivityStatusColor(status)}`}>{status}</span>
                           {/* Warmness Score Badge */}
-                          <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800" title="Warmness Score">
+                          <span className="px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-800" title="Warmness Score">
                             🔥 {warmnessScore}
                           </span>
                         </div>
-                        {/* Organisation name below person name */}
+                        
+                        {/* Organisation name */}
                         {orgName && (
-                          <div className="text-sm text-gray-700 font-medium mt-1" data-testid="org-name">
+                          <div className="text-sm text-gray-700 font-medium mb-2" data-testid="org-name">
                             {orgName}
                           </div>
                         )}
-                        {/* Sector and Country as badges */}
-                        <div className="flex gap-2 mt-2">
+                        
+                        {/* Sector and Country badges */}
+                        <div className="flex flex-wrap gap-2 mb-3">
                           {sector && (
-                            <span className="inline-block px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-medium" title="Sector">
+                            <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-800 text-xs font-medium" title="Sector">
                               {sector}
                             </span>
                           )}
                           {country && (
-                            <span className="inline-block px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="Country">
+                            <span className="inline-block px-2 py-1 rounded bg-yellow-100 text-yellow-800 text-xs font-medium" title="Country">
                               {country}
                             </span>
                           )}
                         </div>
+                        
+                        {/* Attention and Activity Info */}
                         {attentionNeeded && (
-                          <div className="mt-2 text-xs text-red-600 font-medium">
+                          <div className="text-xs text-red-600 font-medium mb-2">
                             Needs attention
                           </div>
                         )}
                         {Array.isArray(contact.activities) && contact.activities.length > 0 && (
-                          <div className="mt-1 text-xs text-gray-400">
+                          <div className="text-xs text-gray-400 mb-3">
                             Last activity: {contact.activities[0].type} - {contact.activities[0].subject}
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-1 ml-4">
+                      
+                      {/* Action Buttons - Mobile Optimized */}
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-1 sm:ml-4">
                         <QuickActionButton
                           type="EMAIL"
                           onClick={(type) => handlePrimaryAction(contact, type)}
                           contactName={contact.name}
+                          className="w-full sm:w-auto px-4 py-3 sm:px-3 sm:py-2 text-sm"
                         />
                         <QuickActionButton
                           type="MEETING_REQUEST"
                           onClick={(type) => handlePrimaryAction(contact, type)}
                           contactName={contact.name}
+                          className="w-full sm:w-auto px-4 py-3 sm:px-3 sm:py-2 text-sm"
                         />
                         <QuickActionButton
                           type="MEETING"
                           onClick={(type) => handlePrimaryAction(contact, type)}
                           contactName={contact.name}
+                          className="w-full sm:w-auto px-4 py-3 sm:px-3 sm:py-2 text-sm"
                         />
-                        <ActionMenu
-                          onAction={handleSecondaryAction}
-                          contactName={contact.name}
-                        />
+                        <div className="flex justify-center sm:justify-start">
+                          <ActionMenu
+                            onAction={handleSecondaryAction}
+                            contactName={contact.name}
+                          />
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>
+                    
+                    {/* Footer Section */}
+                    <div className="mt-4 pt-3 border-t border-gray-100">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-gray-500">
+                        <span className="text-center sm:text-left">
                           {daysSinceContact !== null ? (
                             `${daysSinceContact} days since last contact`
                           ) : (
@@ -656,7 +671,7 @@ export function My500Client({
                           )}
                         </span>
                         {isRecentlyContacted(contact) && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <span className="inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
@@ -675,16 +690,17 @@ export function My500Client({
 
       {/* Pagination */}
       {pagination.totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-between">
-          <div className="text-sm text-gray-700">
+        <div className="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="text-sm text-gray-700 text-center sm:text-left">
             Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} results
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center justify-center gap-2">
             <Button
               onClick={() => handlePageChange(pagination.page - 1)}
               disabled={!pagination.hasPrev}
               variant="outline"
               size="sm"
+              className="min-w-[80px]"
             >
               Previous
             </Button>
@@ -696,6 +712,7 @@ export function My500Client({
               disabled={!pagination.hasMore}
               variant="outline"
               size="sm"
+              className="min-w-[80px]"
             >
               Next
             </Button>

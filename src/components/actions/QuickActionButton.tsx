@@ -56,17 +56,19 @@ export function QuickActionButton({
       aria-busy={loading ? 'true' : undefined}
       data-testid={`contact-${type.toLowerCase()}-action`}
       className={cn(
-        'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md',
+        'inline-flex items-center justify-center gap-2 px-3 py-2 sm:px-3 sm:py-2 text-sm font-medium rounded-md',
         'transition-colors duration-200',
         'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         'hover:bg-gray-100 active:bg-gray-200',
         'border border-gray-300 bg-white text-gray-700',
+        'min-h-[44px] sm:min-h-[36px]', // Mobile touch target minimum
+        'touch-manipulation', // Optimize for touch
         className
       )}
     >
       <span className="text-base">{config.icon}</span>
-      <span>{config.label}</span>
+      <span className="whitespace-nowrap">{config.label}</span>
       {loading && (
         <svg
           className="animate-spin h-4 w-4 text-gray-500"

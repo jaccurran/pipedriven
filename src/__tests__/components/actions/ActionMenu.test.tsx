@@ -67,13 +67,13 @@ describe('ActionMenu', () => {
     expect(mockOnAction).not.toHaveBeenCalled()
   })
 
-  it('calls onAction when Save button is clicked in modal', () => {
+  it('calls onAction when Submit button is clicked in modal', () => {
     render(<ActionMenu onAction={mockOnAction} contactName="Jane Doe" />)
     const button = screen.getByRole('button', { name: /more actions/i })
     fireEvent.click(button)
     fireEvent.click(screen.getByRole('menuitem', { name: /LinkedIn/i }))
-    // Click Save button
-    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    // Click Submit button
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }))
     expect(mockOnAction).toHaveBeenCalledWith('LINKEDIN')
     // Modal should close
     expect(screen.queryByRole('dialog', { name: /LinkedIn Action/i })).not.toBeInTheDocument()
