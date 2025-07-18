@@ -36,7 +36,82 @@ function extractPrimaryValue(field: unknown): string | null {
 }
 
 // Calculate Warmness Score based on specified criteria
-// Warmness score calculation is handled in the sync logic
+function calculateWarmnessScore(pipedriveContact: PipedrivePerson): number {
+  let score = 0;
+  
+  // Debug logging for production troubleshooting
+  const debugInfo = {
+    contactId: pipedriveContact.id,
+    name: pipedriveContact.name,
+    hasEmail: !!(pipedriveContact.email && pipedriveContact.email.length > 0),
+    hasPhone: !!(pipedriveContact.phone && pipedriveContact.phone.length > 0),
+    hasOrgId: !!pipedriveContact.org_id,
+    hasJobTitle: !!pipedriveContact.job_title,
+    activitiesCount: pipedriveContact.activities_count || 0,
+    openDeals: pipedriveContact.open_deals_count || 0,
+    closedDeals: pipedriveContact.closed_deals_count || 0,
+    wonDeals: pipedriveContact.won_deals_count || 0,
+    emailMessages: pipedriveContact.email_messages_count || 0,
+    lastActivityDate: pipedriveContact.last_activity_date,
+  };
+  
+  // Base score from contact data (0-4 points)
+  if (pipedriveContact.email && pipedriveContact.email.length > 0) score += 1;
+  if (pipedriveContact.phone && pipedriveContact.phone.length > 0) score += 1;
+  if (pipedriveContact.org_id) score += 1;
+  if (pipedriveContact.job_title) score += 1;
+  
+  // Activity-based scoring (0-3 points)
+  const activitiesCount = pipedriveContact.activities_count || 0;
+  score += Math.min(activitiesCount, 3); // Max 3 points for activities
+  
+  // Deal-based scoring (0-2 points)
+  const openDeals = pipedriveContact.open_deals_count || 0;
+  const closedDeals = pipedriveContact.closed_deals_count || 0;
+  const wonDeals = pipedriveContact.won_deals_count || 0;
+  
+  if (wonDeals > 0) score += 2; // High value for won deals
+  else if (openDeals > 0) score += 1; // Medium value for open deals
+  else if (closedDeals > 0) score += 0.5; // Low value for closed deals
+  
+  // Engagement scoring (0-1 point)
+  if (pipedriveContact.last_activity_date) {
+    const daysSinceLastActivity = (Date.now() - new Date(pipedriveContact.last_activity_date).getTime()) / (1000 * 60 * 60 * 24);
+    
+    if (daysSinceLastActivity < 7) score += 1; // Very recent activity
+    else if (daysSinceLastActivity < 30) score += 0.5; // Recent activity
+    else if (daysSinceLastActivity > 90) score -= 0.5; // Old activity (penalty)
+  }
+  
+  // Email engagement (0-1 point)
+  const emailMessages = pipedriveContact.email_messages_count || 0;
+  if (emailMessages > 0) score += 1;
+  
+  // Apply time decay for older contacts
+  if (pipedriveContact.last_activity_date) {
+    const daysSinceLastActivity = (Date.now() - new Date(pipedriveContact.last_activity_date).getTime()) / (1000 * 60 * 60 * 24);
+    
+    if (daysSinceLastActivity > 180) { // 6 months
+      score *= 0.8; // 20% decay
+    } else if (daysSinceLastActivity > 90) { // 3 months
+      score *= 0.9; // 10% decay
+    }
+  }
+  
+  // Clamp between 0-10
+  const finalScore = Math.min(Math.max(Math.round(score), 0), 10);
+  
+  // Log debug info for contacts with zero scores in production
+  if (finalScore === 0 && process.env.NODE_ENV === 'production') {
+    console.log('Warmness Score Debug - Zero Score Contact:', {
+      ...debugInfo,
+      calculatedScore: score,
+      finalScore,
+    });
+  }
+  
+  return finalScore;
+}
 
 const errorRecoveryService = new ErrorRecoveryService()
 
@@ -742,7 +817,7 @@ async function mapPipedriveContact(
     lastOutgoingMailTime,
     followersCount: pipedriveContact.followers_count || 0,
     jobTitle: pipedriveContact.job_title || null,
-    // warmnessScore calculation is handled in the sync logic above
+    warmnessScore: calculateWarmnessScore(pipedriveContact), // Add warmness score
     
     userId,
   };

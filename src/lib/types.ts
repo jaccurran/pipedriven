@@ -29,6 +29,7 @@ export interface CreateContactInput {
   lastOutgoingMailTime: Date | null
   followersCount: number
   jobTitle: string | null
+  warmnessScore: number
   
   userId: string
 } 

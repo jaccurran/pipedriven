@@ -65,18 +65,40 @@ async function fetchMy500Contacts(params: SearchParams = {}): Promise<My500Respo
 
 // Sync contacts with Pipedrive
 async function syncContacts(syncData: { syncType: 'FULL' | 'INCREMENTAL'; sinceTimestamp?: string }): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
-  const response = await fetch('/api/pipedrive/contacts/sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(syncData),
-  })
+  console.log('Starting sync with data:', syncData)
+  
+  try {
+    const response = await fetch('/api/pipedrive/contacts/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(syncData),
+    })
 
-  if (!response.ok) {
-    throw new Error('Sync failed')
+    console.log('Sync response status:', response.status, response.statusText)
+
+    if (!response.ok) {
+      // Try to get more specific error information from the response
+      let errorMessage = 'Sync failed'
+      try {
+        const errorData = await response.json()
+        console.log('Error response data:', errorData)
+        errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      } catch (parseError) {
+        console.log('Failed to parse error response:', parseError)
+        // If we can't parse the error response, use the status text
+        errorMessage = `HTTP ${response.status}: ${response.statusText}`
+      }
+      throw new Error(errorMessage)
+    }
+
+    const result = await response.json()
+    console.log('Sync successful, result:', result)
+    return result
+  } catch (error) {
+    console.error('Sync function caught error:', error)
+    throw error
   }
-
-  return response.json()
 }
 
 // React Query hook for My-500 contacts
@@ -109,8 +131,24 @@ export function useSyncContacts() {
         pendingSync: false,
       })
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       console.error('Sync failed:', error)
+      
+      // Log specific error details for debugging
+      if (error instanceof Error) {
+        console.error('Sync error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        })
+      } else {
+        console.error('Sync error details (non-Error object):', {
+          error: error,
+          type: typeof error,
+          timestamp: new Date().toISOString()
+        })
+      }
     },
   })
 }

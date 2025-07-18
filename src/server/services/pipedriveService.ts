@@ -371,19 +371,23 @@ export class PipedriveService {
       // Get the "Persons Still Active - Pipedriver" filter ID
       const filterResult = await this.getStillActiveFilter()
       
-      if (!filterResult.success || !filterResult.filterId) {
+      if (!filterResult.success) {
         return {
           success: false,
-          error: 'Required Pipedrive filter "Persons Still Active - Pipedriver" not found. Please ensure this filter exists in your Pipedrive account.',
+          error: filterResult.error
         }
       }
 
       // Use the filter to get only active contacts
+      const endpoint = `/persons?start=${start}&limit=${limit}&filter_id=${filterResult.filterId}&include_custom_fields=1&include_activities=1&include_deals=1`
+      console.log('Using "Persons Still Active - Pipedriver" filter for sync')
+
+      // Use the filter to get only active contacts
       while (keepFetching) {
         // Try to include more data by adding additional parameters
-        const endpoint = `/persons?start=${start}&limit=${limit}&filter_id=${filterResult.filterId}&include_custom_fields=1&include_activities=1&include_deals=1`
+        const currentEndpoint = endpoint.replace(`start=${start - fetched}`, `start=${start}`)
         
-        const result = await this.makeApiRequest(endpoint, {}, {
+        const result = await this.makeApiRequest(currentEndpoint, {}, {
           endpoint: '/persons',
           method: 'GET',
         })
@@ -452,7 +456,7 @@ export class PipedriveService {
       }
       return {
         success: false,
-        error: 'Still Active filter not found'
+        error: 'Required Pipedrive filter "Persons Still Active - Pipedriver" not found. Please ensure this filter exists in your Pipedrive account.'
       }
     } catch (error) {
       console.error('Pipedrive API error:', error)
