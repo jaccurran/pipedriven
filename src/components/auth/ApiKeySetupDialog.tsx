@@ -65,10 +65,16 @@ export function ApiKeySetupDialog({ isOpen, onSuccess, onCancel }: ApiKeySetupDi
         if (session?.user?.id) {
           clearApiKeyValidationCache(session.user.id)
         }
-        // Refresh the session to include the new API key
-        await updateSession()
-        // Call onSuccess after successful validation and save
+        // Call onSuccess immediately to close dialog and prevent loops
         onSuccess()
+        // Update session after a short delay to prevent immediate re-validation
+        setTimeout(async () => {
+          try {
+            await updateSession()
+          } catch (error) {
+            console.error('Failed to update session:', error)
+          }
+        }, 500)
       } else {
         setError(result.error || 'The API key appears to be invalid. Please check and try again.')
       }

@@ -7,9 +7,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { email, password } = body
 
-    // Test user lookup
-    const user = await prisma.user.findUnique({
-      where: { email },
+    // Test user lookup with case-insensitive email comparison
+    const user = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email.trim(),
+          mode: 'insensitive'
+        }
+      },
       select: {
         id: true,
         email: true,

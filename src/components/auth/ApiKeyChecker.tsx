@@ -43,10 +43,16 @@ export function ApiKeyChecker({
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showSetupDialog, setShowSetupDialog] = useState(false)
   const lastValidationRef = useRef<string>('')
+  const isUpdatingSessionRef = useRef(false)
 
   useEffect(() => {
     const checkApiKey = async () => {
       if (status === 'loading') return
+      
+      // Skip validation if we're in the middle of updating the session
+      if (isUpdatingSessionRef.current) {
+        return
+      }
       
       if (!session?.user?.id) {
         // Handle case where session exists but user is null (invalidated session)
@@ -86,8 +92,11 @@ export function ApiKeyChecker({
       }
       lastValidationRef.current = cacheKey
 
+      // Add a small delay to prevent rapid successive calls
+      await new Promise(resolve => setTimeout(resolve, 100))
+
       try {
-        // Check if user has an API key (now encrypted)
+        // Check if user has an API key in session first
         if (!session.user.pipedriveApiKey) {
           setApiKeyValid(false)
           onApiKeyInvalid?.()
@@ -100,13 +109,17 @@ export function ApiKeyChecker({
         }
 
         // Validate the API key using the auth validation endpoint
-        // This endpoint handles the encrypted API key from the session
         const response = await fetch('/api/auth/validate-api-key', {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
         })
+
+        if (!response.ok) {
+          console.error('API key validation request failed:', response.status, response.statusText)
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
 
         const result = await response.json()
 
@@ -151,13 +164,23 @@ export function ApiKeyChecker({
   const handleApiKeySuccess = () => {
     setApiKeyValid(true)
     setShowSetupDialog(false)
-    onApiKeyValid?.()
     
-    // Update cache with new valid result
+    // Set flag to prevent re-validation during session update
+    isUpdatingSessionRef.current = true
+    
+    // Update cache with new valid result before calling callbacks
     if (session?.user?.id) {
       const cacheKey = `${session.user.id}-true`
       validationCache.set(cacheKey, { valid: true, timestamp: Date.now() })
     }
+    
+    // Call callback after cache update
+    onApiKeyValid?.()
+    
+    // Reset flag after a delay to allow session update to complete
+    setTimeout(() => {
+      isUpdatingSessionRef.current = false
+    }, 1000)
   }
 
   const handleApiKeyCancel = () => {

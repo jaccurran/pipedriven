@@ -35,9 +35,8 @@ async function debugApiKeys() {
         
         // Test the API key
         try {
-          const testResponse = await fetch("https://api.pipedrive.com/v1/users/me", {
+          const testResponse = await fetch(`https://api.pipedrive.com/v1/users/me?api_token=${apiKey}`, {
             headers: {
-              Authorization: `Bearer ${apiKey}`,
               "Content-Type": "application/json",
             },
           })
@@ -58,9 +57,8 @@ async function debugApiKeys() {
           
           // Test the decrypted API key
           try {
-            const testResponse = await fetch("https://api.pipedrive.com/v1/users/me", {
+            const testResponse = await fetch(`https://api.pipedrive.com/v1/users/me?api_token=${decrypted}`, {
               headers: {
-                Authorization: `Bearer ${decrypted}`,
                 "Content-Type": "application/json",
               },
             })

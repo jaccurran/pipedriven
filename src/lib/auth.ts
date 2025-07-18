@@ -22,8 +22,14 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          const user = await prisma.user.findUnique({
-            where: { email: credentials.email },
+          // Use case-insensitive email comparison at database level
+          const user = await prisma.user.findFirst({
+            where: {
+              email: {
+                equals: credentials.email.trim(),
+                mode: 'insensitive'
+              }
+            },
             select: {
               id: true,
               email: true,
@@ -78,15 +84,21 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      // Validate that the user still exists in the database
+      // Always fetch the latest user data from the database
       if (token?.id) {
         try {
-          const userExists = await prisma.user.findUnique({
+          const user = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { id: true }
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true,
+              pipedriveApiKey: true,
+            }
           })
 
-          if (!userExists) {
+          if (!user) {
             console.log('User no longer exists in database, invalidating session:', token.id)
             // Instead of returning null, return an empty session to trigger signout
             return {
@@ -95,8 +107,17 @@ export const authOptions: NextAuthOptions = {
               expires: new Date(0).toISOString()
             }
           }
-        } catch {
-          console.error('Error validating user existence');
+
+          // Update session with latest user data from database
+          if (session.user) {
+            session.user.id = user.id
+            session.user.email = user.email
+            session.user.name = user.name
+            session.user.role = user.role
+            session.user.pipedriveApiKey = user.pipedriveApiKey
+          }
+        } catch (error) {
+          console.error('Error fetching user data for session:', error);
           // On database error, return empty session for safety
           return {
             ...session,
@@ -104,15 +125,6 @@ export const authOptions: NextAuthOptions = {
             expires: new Date(0).toISOString()
           }
         }
-      }
-
-      // Send properties to the client
-      if (token && session.user) {
-        session.user.id = token.id as string
-        session.user.role = token.role as UserRole
-        session.user.email = token.email as string
-        session.user.name = token.name as string
-        session.user.pipedriveApiKey = token.pipedriveApiKey as string
       }
       
       return session
