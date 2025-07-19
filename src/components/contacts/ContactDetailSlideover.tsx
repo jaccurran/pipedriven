@@ -38,6 +38,7 @@ export function ContactDetailSlideover({
   isOpen,
   contact,
   activities,
+  user,
   onClose,
   onEdit,
   onActivityCreate,
@@ -94,23 +95,52 @@ export function ContactDetailSlideover({
   }, [onActivityCreate, contact.id])
 
   const handlePrimaryAction = (type: ActionType) => {
-    // Map ActionType to activity type and create activity
+    // Map ActionType to activity type and create activity with rich context
     const activityMap: Record<ActionType, { type: Activity['type']; subject: string; note: string }> = {
-      EMAIL: { type: 'EMAIL', subject: 'Email Sent', note: 'Email sent to contact' },
-      MEETING_REQUEST: { type: 'MEETING', subject: 'Meeting Requested', note: 'Meeting requested with contact' },
-      MEETING: { type: 'MEETING', subject: 'Meeting Scheduled', note: 'Meeting scheduled with contact' }
+      EMAIL: { 
+        type: 'EMAIL', 
+        subject: `📧 Email to ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: `📧 Email communication with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      },
+      MEETING_REQUEST: { 
+        type: 'MEETING_REQUEST', 
+        subject: `🍽️ Meeting Request - ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: `🍽️ Meeting request sent to ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      },
+      MEETING: { 
+        type: 'MEETING', 
+        subject: `🤝 Meeting with ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: `🤝 Meeting scheduled with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      }
     }
     
     const activity = activityMap[type]
     handleQuickAction(activity.type, activity.subject, activity.note)
   }
 
-  const handleSecondaryAction = (type: SecondaryActionType) => {
-    // Map SecondaryActionType to activity type and create activity
+  const handleSecondaryAction = (type: SecondaryActionType, note?: string) => {
+    // Map SecondaryActionType to activity type and create activity with rich context
     const activityMap: Record<SecondaryActionType, { type: Activity['type']; subject: string; note: string }> = {
-      LINKEDIN: { type: 'EMAIL', subject: 'LinkedIn Activity', note: 'LinkedIn activity with contact' },
-      PHONE_CALL: { type: 'CALL', subject: 'Call Made', note: 'Call made to contact' },
-      CONFERENCE: { type: 'MEETING', subject: 'Conference Call', note: 'Conference call with contact' }
+      LINKEDIN: { 
+        type: 'LINKEDIN', 
+        subject: `💼 LinkedIn Engagement - ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: note || `💼 LinkedIn engagement with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      },
+      PHONE_CALL: { 
+        type: 'CALL', 
+        subject: `📞 Call with ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: note || `📞 Phone call with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      },
+      CONFERENCE: { 
+        type: 'CONFERENCE', 
+        subject: `🎤 Conference Meeting - ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: note || `🎤 Conference meeting with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      },
+      REMOVE_AS_ACTIVE: { 
+        type: 'MEETING', // Default to MEETING type for remove as active
+        subject: `🚫 Remove as Active - ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`, 
+        note: note || `🚫 Contact removed as active: ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}` 
+      }
     }
     
     const activity = activityMap[type]
@@ -118,8 +148,8 @@ export function ContactDetailSlideover({
   }
 
   const handleMeetingPlanned = () => {
-    const subject = `Meeting Planned for ${meetingData.date} at ${meetingData.time}`
-    const note = meetingData.notes || 'Meeting scheduled'
+    const subject = `🤝 Meeting Planned - ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''} on ${meetingData.date} at ${meetingData.time}`
+    const note = meetingData.notes || `🤝 Meeting scheduled with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''} on ${meetingData.date} at ${meetingData.time}${user.name ? ` by ${user.name}` : ''}`
     
     onActivityCreate({
       type: 'MEETING',
@@ -136,8 +166,8 @@ export function ContactDetailSlideover({
   const handleMeetingCompleted = () => {
     onActivityCreate({
       type: 'MEETING',
-      subject: 'Meeting Completed',
-      note: meetingNotes || 'Meeting completed successfully',
+      subject: `✅ Meeting Completed - ${contact.name}${contact.organisation ? ` (${contact.organisation})` : ''}`,
+      note: meetingNotes || `✅ Meeting completed with ${contact.name}${contact.organisation ? ` from ${contact.organisation}` : ''}${user.name ? ` by ${user.name}` : ''}`,
       contactId: contact.id,
     })
     

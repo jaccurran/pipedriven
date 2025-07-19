@@ -22,11 +22,13 @@ export function My500Page({ contacts }: My500PageProps) {
   const [search, setSearch] = useState('')
   const [selectedContact, setSelectedContact] = useState<ContactWithActivities | null>(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
-  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
+  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST' | 'LINKEDIN' | 'REFERRAL' | 'CONFERENCE'>('EMAIL')
+  const [selectedNote, setSelectedNote] = useState<string>('')
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
 
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
+  const [quickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
 
   const filteredContacts = useMemo(() => {
     return contacts.filter(c =>
@@ -72,42 +74,75 @@ export function My500Page({ contacts }: My500PageProps) {
     return diffHours <= 24 // Within last 24 hours
   }
 
-  const handleContactAction = useCallback(async (contact: ContactWithActivities, action: ActionType) => {
-    setSelectedContact(contact)
-    // Map ActionType to activity type
-    const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
-      EMAIL: 'EMAIL',
-      MEETING_REQUEST: 'MEETING',
-      MEETING: 'MEETING'
+  const handleContactAction = useCallback(async (contact: ContactWithActivities, type: ActionType) => {
+    // For test integration - expose mode globally
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__quickActionMode = quickActionMode
     }
-    setActivityType(activityTypeMap[action])
-    setShowActivityModal(true)
-    
-    // Fetch campaigns for the user
-    if (session?.user?.id && campaigns.length === 0) {
+
+    if (quickActionMode === 'SIMPLE') {
+      // Simple mode: direct logging
       try {
-        const response = await fetch('/api/campaigns')
-        if (response.ok) {
-          const data = await response.json()
-          setCampaigns(data.campaigns || [])
+        const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST'> = {
+          EMAIL: 'EMAIL',
+          MEETING_REQUEST: 'MEETING_REQUEST', // Fixed: Meeting requests should be MEETING_REQUEST type
+          MEETING: 'MEETING'
+        }
+        const activityType = activityTypeMap[type]
+        setSelectedContact(contact)
+        setActivityType(activityType)
+        setShowActivityModal(true)
+        
+        // Fetch campaigns for the user
+        if (session?.user?.id && campaigns.length === 0) {
+          try {
+            const response = await fetch('/api/campaigns')
+            if (response.ok) {
+              const data = await response.json()
+              setCampaigns(data.campaigns || [])
+            }
+          } catch (error) {
+            console.error('Failed to fetch campaigns:', error)
+          }
         }
       } catch (error) {
-        console.error('Failed to fetch campaigns:', error)
+        console.error('Failed to log activity:', error)
+        alert(`Failed to log activity: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    } else {
+      // Advanced mode: show modal for activity type selection
+      setSelectedContact(contact)
+      setActivityType(type) // Keep the action type as is
+      setShowActivityModal(true)
+      
+      // Fetch campaigns for the user
+      if (session?.user?.id && campaigns.length === 0) {
+        try {
+          const response = await fetch('/api/campaigns')
+          if (response.ok) {
+            const data = await response.json()
+            setCampaigns(data.campaigns || [])
+          }
+        } catch (error) {
+          console.error('Failed to fetch campaigns:', error)
+        }
       }
     }
-  }, [session?.user?.id, campaigns.length])
+  }, [session?.user?.id, campaigns.length, quickActionMode])
 
-  const handleSecondaryAction = async (type: SecondaryActionType) => {
+  const handleSecondaryAction = async (type: SecondaryActionType, note?: string) => {
     if (!selectedContact) return
     
     setSelectedContact(selectedContact)
     // Map SecondaryActionType to activity type
-    const activityTypeMap: Record<SecondaryActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
-      LINKEDIN: 'EMAIL', // LinkedIn activities as email type for now
+    const activityTypeMap: Record<SecondaryActionType, 'EMAIL' | 'CALL' | 'MEETING' | 'LINKEDIN' | 'MEETING_REQUEST' | 'REFERRAL' | 'CONFERENCE'> = {
+      LINKEDIN: 'LINKEDIN', // Fixed: LinkedIn activities should be LINKEDIN type
       PHONE_CALL: 'CALL',
-      CONFERENCE: 'MEETING'
+      CONFERENCE: 'CONFERENCE',
+      REMOVE_AS_ACTIVE: 'EMAIL' // This won't be used but needed for type completeness
     }
     setActivityType(activityTypeMap[type])
+    setSelectedNote(note || '')
     setShowActivityModal(true)
     
     // Fetch campaigns for the user
@@ -306,9 +341,10 @@ export function My500Page({ contacts }: My500PageProps) {
             onSubmit={handleActivitySubmit}
             onCancel={handleActivityCancel}
             initialData={{
-              type: activityType,
-              subject: `${activityType} with ${selectedContact.name}`,
+              type: activityType === 'MEETING_REQUEST' ? 'MEETING' : activityType,
+              subject: `${activityType === 'MEETING_REQUEST' ? 'Meeting Request' : activityType} with ${selectedContact.name}`,
               contactId: selectedContact.id,
+              note: selectedNote,
             }}
           />
         )}

@@ -1,19 +1,27 @@
 import React, { useRef, useState, useEffect } from 'react'
 
-export type SecondaryActionType = 'LINKEDIN' | 'PHONE_CALL' | 'CONFERENCE'
+export type SecondaryActionType = 'LINKEDIN' | 'PHONE_CALL' | 'CONFERENCE' | 'REMOVE_AS_ACTIVE'
 
-const actions: { type: SecondaryActionType; label: string; icon: string }[] = [
-  { type: 'LINKEDIN', label: 'LinkedIn', icon: '🔗' },
-  { type: 'PHONE_CALL', label: 'Phone Call', icon: '📞' },
-  { type: 'CONFERENCE', label: 'Conference', icon: '🎤' },
+const getActions = (contactIsActive: boolean) => [
+  { type: 'LINKEDIN' as const, label: 'LinkedIn', icon: '🔗' },
+  { type: 'PHONE_CALL' as const, label: 'Phone Call', icon: '📞' },
+  { type: 'CONFERENCE' as const, label: 'Conference', icon: '🎤' },
+  { 
+    type: 'REMOVE_AS_ACTIVE' as const, 
+    label: contactIsActive ? 'Remove as Active' : 'Reactivate', 
+    icon: contactIsActive ? '🚫' : '✅' 
+  },
 ]
 
 interface ActionMenuProps {
-  onAction: (type: SecondaryActionType) => void
+  onAction: (type: SecondaryActionType, note?: string) => void
+  onDeactivate?: () => void
+  onReactivate?: () => void
   contactName?: string
+  contactIsActive?: boolean
 }
 
-export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
+export function ActionMenu({ onAction, onDeactivate, onReactivate, contactName, contactIsActive = true }: ActionMenuProps) {
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(0)
   const [selectedAction, setSelectedAction] = useState<SecondaryActionType | null>(null)
@@ -71,6 +79,8 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
     }
   }, [selectedAction])
 
+  const actions = getActions(contactIsActive)
+
   // Keyboard navigation
   useEffect(() => {
     if (!open) return
@@ -101,13 +111,27 @@ export function ActionMenu({ onAction, contactName }: ActionMenuProps) {
   }
 
   const handleActionSelect = (actionType: SecondaryActionType) => {
+    console.log('ActionMenu handleActionSelect called:', actionType, 'contactIsActive:', contactIsActive)
+    if (actionType === 'REMOVE_AS_ACTIVE') {
+      console.log('REMOVE_AS_ACTIVE selected, contactIsActive:', contactIsActive, 'onDeactivate:', !!onDeactivate, 'onReactivate:', !!onReactivate)
+      if (contactIsActive && onDeactivate) {
+        console.log('Calling onDeactivate')
+        onDeactivate()
+      } else if (!contactIsActive && onReactivate) {
+        console.log('Calling onReactivate')
+        onReactivate()
+      }
+      setOpen(false)
+      return
+    }
+    
     setSelectedAction(actionType)
     setOpen(false)
   }
 
   const handleSubmit = () => {
     if (selectedAction) {
-      onAction(selectedAction)
+      onAction(selectedAction, note)
       setSelectedAction(null)
       setNote('')
     }

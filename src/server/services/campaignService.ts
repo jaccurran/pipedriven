@@ -11,6 +11,7 @@ export interface CreateCampaignData {
   endDate?: Date
   targetLeads?: number
   budget?: number
+  shortcode?: string
 }
 
 export interface UpdateCampaignData {
@@ -187,6 +188,7 @@ export class CampaignService {
       EMAIL: 0,
       CALL: 0,
       MEETING: 0,
+      MEETING_REQUEST: 0,
       LINKEDIN: 0,
       REFERRAL: 0,
       CONFERENCE: 0,

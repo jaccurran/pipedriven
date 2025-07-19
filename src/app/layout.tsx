@@ -4,6 +4,7 @@ import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { PipedriveToastProvider } from "@/components/ui/PipedriveToast";
 // import { EnhancedAuthFlow } from "@/components/auth/EnhancedAuthFlow"; // Remove from global layout
 
 const geistSans = Geist({
@@ -39,7 +40,9 @@ export default function RootLayout({
         <ErrorBoundary>
           <SessionProvider>
             <QueryProvider>
-              {children}
+              <PipedriveToastProvider>
+                {children}
+              </PipedriveToastProvider>
             </QueryProvider>
           </SessionProvider>
         </ErrorBoundary>

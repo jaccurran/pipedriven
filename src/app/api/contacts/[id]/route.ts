@@ -84,8 +84,8 @@ export async function PUT(
     const contact = await contactService.updateContact(id, cleanData)
 
     return NextResponse.json(contact)
-  } catch {
-    console.error('Error in PUT /api/contacts/[id]')
+  } catch (error) {
+    console.error('Error in PUT /api/contacts/[id]:', error)
     
     // Handle specific error cases
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -33,5 +33,5 @@ export function My500Content({ user }: My500ContentProps) {
     );
   }
 
-  return <My500Client user={user as { id: string; name: string; email: string; role: 'CONSULTANT' | 'GOLDEN_TICKET'; createdAt: Date; updatedAt: Date; password: string | null; pipedriveApiKey: string | null; lastSyncTimestamp: Date | null; syncStatus: string; emailVerified: Date | null; image: string | null }} initialContacts={[]} />;
+  return <My500Client user={user as { id: string; name: string; email: string; role: 'CONSULTANT' | 'GOLDEN_TICKET'; createdAt: Date; updatedAt: Date; password: string | null; pipedriveApiKey: string | null; pipedriveUserId: number | null; lastSyncTimestamp: Date | null; syncStatus: string; emailVerified: Date | null; image: string | null; quickActionMode: 'SIMPLE' | 'DETAILED'; emailNotifications: boolean; activityReminders: boolean; campaignUpdates: boolean; syncStatusAlerts: boolean }} initialContacts={[]} />;
 } 

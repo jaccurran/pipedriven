@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import type { Activity, ActivityType, Contact, Prisma } from '@prisma/client'
+import { ActivityReplicationService } from './activityReplicationService'
 
 export interface CreateActivityData {
   type: ActivityType
@@ -48,6 +49,8 @@ export interface ActivityAnalytics {
 }
 
 export class ActivityService {
+  constructor(private replicationService?: ActivityReplicationService) {}
+
   async createActivity(data: CreateActivityData): Promise<Activity> {
     // Validate contact exists if provided
     if (data.contactId) {
@@ -89,6 +92,20 @@ export class ActivityService {
 
       return activity
     })
+
+    // Replicate to Pipedrive if service is available and contact has Pipedrive ID
+    if (this.replicationService && data.contactId) {
+      try {
+        await this.replicationService.replicateActivity({
+          activityId: result.id,
+          contactId: data.contactId,
+          userId: data.userId
+        });
+      } catch (error) {
+        console.error('Failed to replicate activity:', error);
+        // Don't fail activity creation for replication failure
+      }
+    }
 
     return result
   }
@@ -218,6 +235,7 @@ export class ActivityService {
       CALL: 0,
       EMAIL: 0,
       MEETING: 0,
+      MEETING_REQUEST: 0,
       LINKEDIN: 0,
       REFERRAL: 0,
       CONFERENCE: 0,

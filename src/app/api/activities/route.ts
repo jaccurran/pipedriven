@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ActivityService } from '@/server/services/activityService'
+import { ActivityReplicationService } from '@/server/services/activityReplicationService'
+import { createPipedriveService } from '@/server/services/pipedriveService'
 import { getServerSession } from '@/lib/auth'
 import { z } from 'zod'
 import type { ActivityType } from '@prisma/client'
 
 // Validation schemas
 const createActivitySchema = z.object({
-  type: z.enum(['EMAIL', 'CALL', 'MEETING', 'LINKEDIN', 'REFERRAL', 'CONFERENCE']),
+  type: z.enum(['EMAIL', 'CALL', 'MEETING', 'MEETING_REQUEST', 'LINKEDIN', 'REFERRAL', 'CONFERENCE']),
   subject: z.string().optional(),
   note: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional().refine((val) => {
@@ -111,8 +113,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Create service instance and create activity
-    const activityService = new ActivityService()
+    // Create Pipedrive service and replication service
+    const pipedriveService = await createPipedriveService(session.user.id)
+    const replicationService = pipedriveService 
+      ? new ActivityReplicationService(pipedriveService)
+      : undefined
+
+    // Create service instance with replication service and create activity
+    const activityService = new ActivityService(replicationService)
     const activity = await activityService.createActivity({
       ...validatedData,
       note: validatedData.note ?? undefined,

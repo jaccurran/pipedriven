@@ -16,7 +16,6 @@ export interface PipedrivePerson {
     value: string
     primary: boolean
   }>
-  org_name?: string
   org_id?: {
     name: string
     people_count: number
@@ -79,6 +78,10 @@ export interface PipedriveCustomFieldMapping {
   campaignFieldKey?: string
   warmnessScoreFieldKey?: string
   lastContactedFieldKey?: string
+  // Add new field mappings
+  sectorFieldKey?: string
+  countryFieldKey?: string
+  sizeFieldKey?: string
 }
 
 // Alias for backward compatibility
@@ -144,6 +147,14 @@ interface PipedriveApiResponse<T> {
 export class PipedriveService {
   private apiKey: string
   private baseUrl: string
+  private requestCount = 0
+  private lastResetTime = Date.now()
+  private readonly RATE_LIMIT = 100 // requests per 10 seconds
+  private readonly RESET_INTERVAL = 10000 // 10 seconds
+  // Add field mapping cache
+  private fieldMappings: PipedriveCustomFieldMapping | null = null
+  private fieldMappingsTimestamp: number = 0
+  private readonly FIELD_MAPPINGS_CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 
   constructor(apiKey: string) {
     if (!apiKey || apiKey.trim() === '') {
@@ -158,6 +169,30 @@ export class PipedriveService {
     
     this.apiKey = apiKey.trim()
     this.baseUrl = getPipedriveApiUrl()
+  }
+
+  /**
+   * Check and enforce rate limiting
+   */
+  private async checkRateLimit(): Promise<void> {
+    const now = Date.now()
+    
+    // Reset counter if interval has passed
+    if (now - this.lastResetTime >= this.RESET_INTERVAL) {
+      this.requestCount = 0
+      this.lastResetTime = now
+    }
+
+    // Check if we're at the limit
+    if (this.requestCount >= this.RATE_LIMIT) {
+      const waitTime = this.RESET_INTERVAL - (now - this.lastResetTime)
+      console.log(`Pipedrive rate limit reached. Waiting ${waitTime}ms before next request`)
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+      this.requestCount = 0
+      this.lastResetTime = Date.now()
+    }
+
+    this.requestCount++
   }
 
   /**
@@ -203,13 +238,66 @@ export class PipedriveService {
   }
 
   /**
+   * Create a person in Pipedrive
+   */
+  async createPerson(personData: {
+    name: string;
+    email?: string[];
+    phone?: string[];
+    org_id?: number;
+    custom_fields?: Record<string, unknown>;
+    owner_id?: number;
+  }): Promise<{ success: boolean; personId?: number; error?: string }> {
+    try {
+      console.log('Creating person in Pipedrive with data:', JSON.stringify(personData, null, 2));
+      
+      const result = await this.makeApiRequest('/persons', {
+        method: 'POST',
+        body: JSON.stringify(personData),
+      }, {
+        endpoint: '/persons',
+        method: 'POST',
+      })
+
+      if (!result.success) {
+        console.error('Failed to create person in Pipedrive:', result.error);
+        return {
+          success: false,
+          error: result.error || 'Failed to create person in Pipedrive',
+        }
+      }
+
+      const personId = (result.data?.data as { id: number } | undefined)?.id
+      if (!personId) {
+        console.error('Pipedrive API returned no person ID')
+        return {
+          success: false,
+          error: 'Invalid response from Pipedrive API',
+        }
+      }
+
+      console.log('Successfully created person in Pipedrive with ID:', personId);
+      return {
+        success: true,
+        personId,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to create person in Pipedrive',
+      }
+    }
+  }
+
+  /**
    * Create or update a person in Pipedrive
    */
   async createOrUpdatePerson(contact: Contact): Promise<{ success: boolean; personId?: number; error?: string }> {
     try {
       // Check if person already exists
       if (contact.pipedrivePersonId) {
-        return await this.updatePerson(contact)
+        return await this.updatePersonFromContact(contact)
       }
 
       const personData = this.sanitizeContactData(contact)
@@ -270,7 +358,48 @@ export class PipedriveService {
   /**
    * Update an existing person in Pipedrive
    */
-  private async updatePerson(contact: Contact): Promise<{ success: boolean; personId?: number; error?: string }> {
+  async updatePerson(personId: string, personData: {
+    name?: string;
+    email?: string[];
+    phone?: string[];
+    org_id?: number;
+    custom_fields?: Record<string, unknown>;
+    owner_id?: number;
+  }): Promise<{ success: boolean; personId?: number; error?: string }> {
+    try {
+      const result = await this.makeApiRequest(`/persons/${personId}`, {
+        method: 'PUT',
+        body: JSON.stringify(personData),
+      }, {
+        pipedrivePersonId: personId,
+        endpoint: `/persons/${personId}`,
+        method: 'PUT',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to update person in Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        personId: (result.data?.data as { id: number } | undefined)?.id,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to update person in Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Update an existing person in Pipedrive (private method for Contact objects)
+   */
+  private async updatePersonFromContact(contact: Contact): Promise<{ success: boolean; personId?: number; error?: string }> {
     try {
       const personData = this.sanitizeContactData(contact)
 
@@ -308,15 +437,93 @@ export class PipedriveService {
   /**
    * Create an activity in Pipedrive
    */
-  async createActivity(activity: Activity & { contact?: { pipedrivePersonId?: string | null } }): Promise<{ success: boolean; activityId?: number; error?: string }> {
+  async createActivity(activity: Activity & { 
+    contact?: { 
+      pipedrivePersonId?: string | null; 
+      pipedriveOrgId?: string | null;
+      name?: string;
+      organisation?: string | null;
+    };
+    user?: {
+      name?: string | null;
+      email?: string | null;
+    };
+    campaign?: {
+      name?: string | null;
+      shortcode?: string | null;
+    };
+  }): Promise<{ success: boolean; activityId?: number; error?: string }> {
     try {
-      // Sanitize and validate activity data
+      // Create more descriptive fallbacks based on activity type and context
+      const getDefaultSubject = (type: ActivityType, context: {
+        contactName?: string;
+        userName?: string;
+        campaignName?: string;
+        campaignShortcode?: string;
+      }): string => {
+        const { contactName, userName, campaignName } = context;
+        const contactContext = contactName ? ` - ${contactName}` : '';
+        const userContext = userName ? ` by ${userName}` : '';
+        const campaignContext = campaignName ? ` (${campaignName})` : '';
+        
+        switch (type) {
+          case 'CALL': return `📞 Phone Call${contactContext}${userContext}${campaignContext}`;
+          case 'EMAIL': return `📧 Email Communication${contactContext}${userContext}${campaignContext}`;
+          case 'MEETING': return `🤝 Meeting${contactContext}${userContext}${campaignContext}`;
+          case 'MEETING_REQUEST': return `🍽️ Meeting Request${contactContext}${userContext}${campaignContext}`;
+          case 'LINKEDIN': return `💼 LinkedIn Engagement${contactContext}${userContext}${campaignContext}`;
+          case 'REFERRAL': return `🔄 Referral Activity${contactContext}${userContext}${campaignContext}`;
+          case 'CONFERENCE': return `🎤 Conference Meeting${contactContext}${userContext}${campaignContext}`;
+          default: return `📋 Activity${contactContext}${userContext}${campaignContext}`;
+        }
+      }
+
+      const getDefaultNote = (type: ActivityType, context: {
+        contactName?: string;
+        userName?: string;
+        campaignName?: string;
+        organisation?: string;
+      }): string => {
+        const { contactName, userName, campaignName, organisation } = context;
+        const contactContext = contactName ? ` with ${contactName}` : ' with contact';
+        const userContext = userName ? ` by ${userName}` : '';
+        const campaignContext = campaignName ? ` as part of ${campaignName} campaign` : '';
+        const orgContext = organisation ? ` from ${organisation}` : '';
+        
+        switch (type) {
+          case 'CALL': return `📞 Phone call${contactContext}${orgContext}${userContext}${campaignContext}`;
+          case 'EMAIL': return `📧 Email communication${contactContext}${orgContext}${userContext}${campaignContext}`;
+          case 'MEETING': return `🤝 Meeting${contactContext}${orgContext}${userContext}${campaignContext}`;
+          case 'MEETING_REQUEST': return `🍽️ Meeting request sent${contactContext}${orgContext}${userContext}${campaignContext}`;
+          case 'LINKEDIN': return `💼 LinkedIn engagement${contactContext}${orgContext}${userContext}${campaignContext}`;
+          case 'REFERRAL': return `🔄 Referral activity${contactContext}${orgContext}${userContext}${campaignContext}`;
+          case 'CONFERENCE': return `🎤 Conference meeting at conference event${contactContext}${orgContext}${userContext}${campaignContext}`;
+          default: return `📋 Activity logged${contactContext}${orgContext}${userContext}${campaignContext}`;
+        }
+      }
+
+      // Build context for better descriptions
+      const context = {
+        contactName: activity.contact?.name,
+        userName: activity.user?.name || undefined,
+        campaignName: activity.campaign?.name || undefined,
+        campaignShortcode: activity.campaign?.shortcode || undefined,
+        organisation: activity.contact?.organisation || undefined
+      };
+
+      // Always include shortcode in subject if available
+      const baseSubject = activity.subject || getDefaultSubject(activity.type, context)
+      const subjectWithShortcode = context.campaignShortcode 
+        ? `[CMPGN-${context.campaignShortcode}] ${baseSubject}`
+        : baseSubject
+      
+      // Sanitize and validate activity data with better fallbacks
       const sanitizedSubject = pipedriveConfig.enableDataSanitization 
-        ? this.sanitizeString(activity.subject || 'Activity', pipedriveConfig.maxSubjectLength)
-        : (activity.subject || 'Activity')
+        ? this.sanitizeString(subjectWithShortcode, pipedriveConfig.maxSubjectLength)
+        : subjectWithShortcode
       const sanitizedNote = pipedriveConfig.enableDataSanitization 
-        ? this.sanitizeString(activity.note, pipedriveConfig.maxNoteLength)
-        : activity.note
+        ? this.sanitizeString(activity.note || getDefaultNote(activity.type, context), pipedriveConfig.maxNoteLength)
+        : (activity.note || getDefaultNote(activity.type, context))
       
       const activityData = {
         subject: sanitizedSubject,
@@ -325,6 +532,7 @@ export class PipedriveService {
         due_time: activity.dueDate ? this.formatTime(activity.dueDate) : undefined,
         note: sanitizedNote,
         person_id: activity.contact?.pipedrivePersonId ? parseInt(activity.contact.pipedrivePersonId) : undefined,
+        org_id: activity.contact?.pipedriveOrgId ? parseInt(activity.contact.pipedriveOrgId) : undefined,
       }
 
       const result = await this.makeApiRequest('/activities', {
@@ -353,6 +561,49 @@ export class PipedriveService {
       return {
         success: false,
         error: 'Failed to create activity in Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Update an activity in Pipedrive
+   */
+  async updateActivity(activityId: string, activityData: {
+    subject?: string;
+    type?: string;
+    due_date?: string;
+    due_time?: string;
+    note?: string;
+    person_id?: number;
+    org_id?: number;
+    done?: boolean;
+  }): Promise<{ success: boolean; activityId?: number; error?: string }> {
+    try {
+      const result = await this.makeApiRequest(`/activities/${activityId}`, {
+        method: 'PUT',
+        body: JSON.stringify(activityData),
+      }, {
+        activityId,
+        endpoint: `/activities/${activityId}`,
+        method: 'PUT',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to update activity in Pipedrive',
+        }
+      }
+
+      return {
+        success: true,
+        activityId: (result.data?.data as { id: number } | undefined)?.id,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to update activity in Pipedrive',
       }
     }
   }
@@ -463,6 +714,53 @@ export class PipedriveService {
       return {
         success: false,
         error: 'Failed to fetch filters from Pipedrive',
+      }
+    }
+  }
+
+  /**
+   * Create an organization in Pipedrive
+   */
+  async createOrganization(orgData: {
+    name: string;
+    industry?: string;
+    country?: string;
+    address?: string;
+  }): Promise<{ success: boolean; orgId?: number; error?: string }> {
+    try {
+      const result = await this.makeApiRequest('/organizations', {
+        method: 'POST',
+        body: JSON.stringify(orgData),
+      }, {
+        endpoint: '/organizations',
+        method: 'POST',
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to create organization in Pipedrive',
+        }
+      }
+
+      const orgId = (result.data?.data as { id: number } | undefined)?.id
+      if (!orgId) {
+        console.error('Pipedrive API returned no organization ID')
+        return {
+          success: false,
+          error: 'Invalid response from Pipedrive API',
+        }
+      }
+
+      return {
+        success: true,
+        orgId,
+      }
+    } catch (error) {
+      console.error('Pipedrive API error:', error)
+      return {
+        success: false,
+        error: 'Failed to create organization in Pipedrive',
       }
     }
   }
@@ -820,6 +1118,68 @@ export class PipedriveService {
   }
 
   /**
+   * Discover and cache custom field mappings for Size, Country, and Sector
+   */
+  async discoverFieldMappings(): Promise<{ success: boolean; mappings?: PipedriveCustomFieldMapping; error?: string }> {
+    try {
+      // Check if we have cached mappings that are still valid
+      const now = Date.now()
+      if (this.fieldMappings && (now - this.fieldMappingsTimestamp) < this.FIELD_MAPPINGS_CACHE_DURATION) {
+        console.log('[discoverFieldMappings] Using cached field mappings')
+        return { success: true, mappings: this.fieldMappings }
+      }
+
+      console.log('[discoverFieldMappings] Discovering field mappings...')
+      
+      const customFieldsResult = await this.getOrganizationCustomFields()
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        return {
+          success: false,
+          error: 'Failed to fetch organization custom fields'
+        }
+      }
+
+      const mappings: PipedriveCustomFieldMapping = {}
+      
+      for (const field of customFieldsResult.fields) {
+        const fieldNameLower = field.name.toLowerCase()
+        
+        if (fieldNameLower.includes('size')) {
+          mappings.sizeFieldKey = field.key
+          console.log(`[discoverFieldMappings] Found Size field: ${field.name} (${field.key})`)
+        } else if (fieldNameLower.includes('country')) {
+          mappings.countryFieldKey = field.key
+          console.log(`[discoverFieldMappings] Found Country field: ${field.name} (${field.key})`)
+        } else if (fieldNameLower.includes('sector') || fieldNameLower.includes('industry')) {
+          mappings.sectorFieldKey = field.key
+          console.log(`[discoverFieldMappings] Found Sector field: ${field.name} (${field.key})`)
+        }
+      }
+
+      // Cache the mappings
+      this.fieldMappings = mappings
+      this.fieldMappingsTimestamp = now
+
+      console.log('[discoverFieldMappings] Field mappings discovered:', mappings)
+      return { success: true, mappings }
+    } catch (error) {
+      console.error('Error discovering field mappings:', error)
+      return {
+        success: false,
+        error: 'Failed to discover field mappings'
+      }
+    }
+  }
+
+  /**
+   * Get the current field mappings (with caching)
+   */
+  async getFieldMappings(): Promise<PipedriveCustomFieldMapping> {
+    const result = await this.discoverFieldMappings()
+    return result.success ? result.mappings || {} : {}
+  }
+
+  /**
    * Get activities for a specific person from Pipedrive
    */
   async getPersonActivities(personId: number): Promise<{ success: boolean; activities?: PipedriveActivity[]; error?: string }> {
@@ -921,6 +1281,7 @@ export class PipedriveService {
       CALL: 'call',
       EMAIL: 'email',
       MEETING: 'meeting',
+      MEETING_REQUEST: 'lunch',
       LINKEDIN: 'task',
       REFERRAL: 'task',
       CONFERENCE: 'meeting',
@@ -967,7 +1328,8 @@ export class PipedriveService {
         name: contact.name || 'Unknown Contact',
         email: contact.email ? [contact.email] : [],
         phone: contact.phone ? [contact.phone] : [],
-        org_name: contact.organisation,
+        // Remove org_name as it's not a valid Pipedrive API field
+        // Organization should be created separately and linked via org_id
       }
     }
     
@@ -975,7 +1337,8 @@ export class PipedriveService {
       name: this.sanitizeString(contact.name, pipedriveConfig.maxNameLength) || 'Unknown Contact',
       email: contact.email ? [this.sanitizeString(contact.email, pipedriveConfig.maxEmailLength)] : [],
       phone: contact.phone ? [this.sanitizeString(contact.phone, pipedriveConfig.maxPhoneLength)] : [],
-      org_name: this.sanitizeString(contact.organisation, pipedriveConfig.maxOrgNameLength),
+      // Remove org_name as it's not a valid Pipedrive API field
+      // Organization should be created separately and linked via org_id
     }
   }
 
@@ -1002,12 +1365,14 @@ export class PipedriveService {
         console.log(`[translateSectorId] Field: ${field.name} (${field.key}) - Type: ${field.field_type}`);
       });
       
-      // Find the sector field (it could be named "Industry", "Sector", etc.)
+      // Find the sector field using discovered field mappings
+      const fieldMappings = await this.getFieldMappings()
       const sectorField = fields.find(field => 
         field.name && (
-          field.name.toLowerCase().includes('industry') ||
-          field.name.toLowerCase().includes('sector') ||
-          field.key === '0333b4d1dc8f3e971d51197989327cdf50e21961' // Known sector field key
+          // Look for exact "Sector" field name
+          field.name === 'Sector' ||
+          // Or use the discovered field key
+          (fieldMappings.sectorFieldKey && field.key === fieldMappings.sectorFieldKey)
         )
       )
 
@@ -1025,7 +1390,7 @@ export class PipedriveService {
         return null
       }
 
-      console.log(`[translateSectorId] Found sector field: ${sectorField.name} with ${sectorField.options.length} options`);
+      console.log(`[translateSectorId] Selected sector field: "${sectorField.name}" (key: ${sectorField.key}) with ${sectorField.options.length} options`);
 
       // Find the option that matches the sector ID
       const sectorOption = sectorField.options.find(option => 
@@ -1051,15 +1416,30 @@ export class PipedriveService {
    */
   async translateCountryId(countryId: number): Promise<string | null> {
     try {
+      console.log(`[translateCountryId] Attempting to translate country ID: ${countryId}`);
+      
       const customFieldsResult = await this.getOrganizationCustomFields();
       if (!customFieldsResult.success || !customFieldsResult.fields) {
         console.warn('Failed to fetch organization custom fields for country translation');
         return null;
       }
       const fields = customFieldsResult.fields;
-      // Find the country field (could be named "Country")
+      console.log(`[translateCountryId] Found ${fields.length} organization custom fields`);
+      
+      // Log all field names to help debug
+      fields.forEach(field => {
+        console.log(`[translateCountryId] Field: ${field.name} (${field.key}) - Type: ${field.field_type}`);
+      });
+      
+      // Find the country field using discovered field mappings
+      const fieldMappings = await this.getFieldMappings()
       const countryField = fields.find(field =>
-        field.name && field.name.toLowerCase().includes('country')
+        field.name && (
+          // Look for exact "Country" field name (not "Country of Address")
+          field.name === 'Country' ||
+          // Or use the discovered field key
+          (fieldMappings.countryFieldKey && field.key === fieldMappings.countryFieldKey)
+        )
       );
 
       // If not found by name, try to find by key
@@ -1070,14 +1450,30 @@ export class PipedriveService {
           console.log(`[translateCountryId] Field key: ${field.key} - Name: ${field.name}`);
         });
       }
-      if (!countryField || !countryField.options) {
-        console.warn('Country field not found or has no options');
+      if (!countryField) {
+        console.warn('Country field not found');
         return null;
       }
+      
+      console.log(`[translateCountryId] Selected country field: "${countryField.name}" (key: ${countryField.key})`);
+      console.log(`[translateCountryId] Country field options:`, countryField.options);
+      
+      if (!countryField.options || countryField.options.length === 0) {
+        console.warn('Country field has no options');
+        return null;
+      }
+      
+      console.log(`[translateCountryId] Found country field: ${countryField.name} with ${countryField.options.length} options`);
+      
+      // Log all options to help debug
+      console.log(`[translateCountryId] Looking for country ID: ${countryId}`);
+      console.log(`[translateCountryId] Available options:`, countryField.options.map(opt => ({ id: opt.id, value: opt.value, label: opt.label })));
+      
       const countryOption = countryField.options.find(option =>
         option.id === countryId || parseInt(option.value) === countryId
       );
       if (countryOption) {
+        console.log(`[translateCountryId] Found matching option: ${countryOption.label} (${countryOption.value})`);
         return countryOption.label || countryOption.value;
       }
       console.warn(`Country ID ${countryId} not found in custom field options`);
@@ -1093,15 +1489,30 @@ export class PipedriveService {
    */
   async translateSizeId(sizeId: number): Promise<string | null> {
     try {
+      console.log(`[translateSizeId] Attempting to translate size ID: ${sizeId}`);
+      
       const customFieldsResult = await this.getOrganizationCustomFields();
       if (!customFieldsResult.success || !customFieldsResult.fields) {
         console.warn('Failed to fetch organization custom fields for size translation');
         return null;
       }
       const fields = customFieldsResult.fields;
-      // Find the size field (could be named "Size")
+      console.log(`[translateSizeId] Found ${fields.length} organization custom fields`);
+      
+      // Log all field names to help debug
+      fields.forEach(field => {
+        console.log(`[translateSizeId] Field: ${field.name} (${field.key}) - Type: ${field.field_type}`);
+      });
+      
+      // Find the size field using discovered field mappings
+      const fieldMappings = await this.getFieldMappings()
       const sizeField = fields.find(field =>
-        field.name && field.name.toLowerCase().includes('size')
+        field.name && (
+          // Look for exact "Size" field name
+          field.name === 'Size' ||
+          // Or use the discovered field key
+          (fieldMappings.sizeFieldKey && field.key === fieldMappings.sizeFieldKey)
+        )
       );
 
       // If not found by name, try to find by key
@@ -1116,10 +1527,14 @@ export class PipedriveService {
         console.warn('Size field not found or has no options');
         return null;
       }
+      
+      console.log(`[translateSizeId] Selected size field: "${sizeField.name}" (key: ${sizeField.key}) with ${sizeField.options.length} options`);
+      
       const sizeOption = sizeField.options.find(option =>
         option.id === sizeId || parseInt(option.value) === sizeId
       );
       if (sizeOption) {
+        console.log(`[translateSizeId] Found matching option: ${sizeOption.label} (${sizeOption.value})`);
         return sizeOption.label || sizeOption.value;
       }
       console.warn(`Size ID ${sizeId} not found in custom field options`);
@@ -1131,13 +1546,188 @@ export class PipedriveService {
   }
 
   /**
+   * Deactivate a contact in Pipedrive by updating the "Still Active?" custom field
+   */
+  async deactivateContact(personId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. Get custom field mappings
+      const mappingsResult = await this.discoverCustomFieldMappings()
+      
+      if (!mappingsResult.success || !mappingsResult.mappings?.stillActiveFieldKey) {
+        return {
+          success: false,
+          error: 'Still Active custom field not found in Pipedrive'
+        }
+      }
+
+      const mappings = mappingsResult.mappings
+
+      // 2. Find the "Not Active" option value
+      const customFieldsResult = await this.getPersonCustomFields()
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        return {
+          success: false,
+          error: 'Failed to fetch custom fields from Pipedrive'
+        }
+      }
+
+      const stillActiveField = customFieldsResult.fields.find(
+        field => field.key === mappings.stillActiveFieldKey
+      )
+
+      if (!stillActiveField?.options) {
+        return {
+          success: false,
+          error: 'Still Active field has no options defined'
+        }
+      }
+
+      const notActiveOption = stillActiveField.options.find(
+        option => option.label.toLowerCase().includes('inactive')
+      )
+
+      if (!notActiveOption) {
+        return {
+          success: false,
+          error: 'Inactive option not found in Still Active field'
+        }
+      }
+
+      // Use the option value if available, otherwise use the label
+      const optionValue = notActiveOption.value || notActiveOption.label
+
+      // 3. Update the person's custom field
+      const updateData: Record<string, string> = {
+        [mappings.stillActiveFieldKey!]: optionValue
+      }
+
+      const result = await this.makeApiRequest(`/persons/${personId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updateData)
+      }, {
+        endpoint: `/persons/${personId}`,
+        method: 'PUT'
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to update contact in Pipedrive'
+        }
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error deactivating contact in Pipedrive:', error)
+      return {
+        success: false,
+        error: 'Failed to deactivate contact in Pipedrive'
+      }
+    }
+  }
+
+  /**
+   * Reactivate a contact in Pipedrive by updating the "Still Active?" custom field
+   */
+  async reactivateContact(personId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. Get custom field mappings
+      const mappingsResult = await this.discoverCustomFieldMappings()
+      
+      if (!mappingsResult.success || !mappingsResult.mappings?.stillActiveFieldKey) {
+        return {
+          success: false,
+          error: 'Still Active custom field not found in Pipedrive'
+        }
+      }
+
+      const mappings = mappingsResult.mappings
+
+      // 2. Find the "Active" option value
+      const customFieldsResult = await this.getPersonCustomFields()
+      if (!customFieldsResult.success || !customFieldsResult.fields) {
+        return {
+          success: false,
+          error: 'Failed to fetch custom fields from Pipedrive'
+        }
+      }
+
+      const stillActiveField = customFieldsResult.fields.find(
+        field => field.key === mappings.stillActiveFieldKey
+      )
+
+      if (!stillActiveField?.options) {
+        return {
+          success: false,
+          error: 'Still Active field has no options defined'
+        }
+      }
+
+      const activeOption = stillActiveField.options.find(
+        option => option.label.toLowerCase().includes('active') &&
+                  !option.label.toLowerCase().includes('inactive')
+      )
+
+      if (!activeOption) {
+        return {
+          success: false,
+          error: 'Active option not found in Still Active field'
+        }
+      }
+
+      // Use the option value if available, otherwise use the label
+      const optionValue = activeOption.value || activeOption.label
+
+      // 3. Update the person's custom field
+      if (!mappings.stillActiveFieldKey) {
+        return {
+          success: false,
+          error: 'Still active field key not configured'
+        }
+      }
+      
+      const updateData = {
+        [mappings.stillActiveFieldKey]: optionValue
+      }
+
+      const result = await this.makeApiRequest(`/persons/${personId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updateData)
+      }, {
+        endpoint: `/persons/${personId}`,
+        method: 'PUT'
+      })
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error || 'Failed to update contact in Pipedrive'
+        }
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error reactivating contact in Pipedrive:', error)
+      return {
+        success: false,
+        error: 'Failed to reactivate contact in Pipedrive'
+      }
+    }
+  }
+
+  /**
    * Make a safe API request with retry logic and error handling
    */
-  private async makeApiRequest(
+  public async makeApiRequest(
     endpoint: string,
     options: RequestInit = {},
     context: Record<string, unknown> = {}
   ): Promise<{ success: boolean; data?: PipedriveApiResponse<unknown>; error?: string; diagnostics?: PipedriveDiagnostics }> {
+    const startTime = Date.now()
+    
+    // Check rate limiting before making request
+    await this.checkRateLimit()
+    
     // Use query parameter authentication instead of Bearer token
     const separator = endpoint.includes('?') ? '&' : '?'
     const url = `${this.baseUrl}${endpoint}${separator}api_token=${this.apiKey}`
@@ -1148,6 +1738,12 @@ export class PipedriveService {
         ...options.headers,
       },
       ...options,
+    }
+
+    // Debug logging for POST requests
+    if (options.method === 'POST' && options.body) {
+      console.log('Making POST request to:', url);
+      console.log('Request body:', options.body);
     }
 
     const maxRetries = pipedriveConfig.enableRetries ? pipedriveConfig.maxRetries : 0
@@ -1202,26 +1798,35 @@ export class PipedriveService {
             }
           }
 
-          // Log detailed error information
-          if (pipedriveConfig.enableDetailedLogging) {
-            console.error('Pipedrive API error:', {
-              status: response.status,
-              statusText: response.statusText,
-              endpoint,
-              method: options.method || 'GET',
-              ...context,
-              ...errorData,
-            })
-          }
+          // Log detailed error information for debugging
+          const errorText = (errorData as Record<string, unknown>).error as string || `HTTP ${response.status}: ${response.statusText}`;
+
+          // Log detailed error information for debugging
+          const errorInfo = {
+            status: response.status,
+            statusText: response.statusText,
+            endpoint,
+            method: options.method || 'GET',
+            ...context,
+            success: false,
+            error: errorText,
+            error_info: 'Please check developers.pipedrive.com for more information about Pipedrive API.',
+            data: null,
+            additional_data: null
+          };
+
+          console.error('Pipedrive API error:', errorInfo);
 
           return {
             success: false,
-            error: (errorData as Record<string, unknown>).error as string || `HTTP ${response.status}: ${response.statusText}`,
+            error: errorText,
             diagnostics: {
-              attempt,
-              ...context,
+              responseTime: `${Date.now() - startTime}ms`,
+              timestamp: new Date().toISOString(),
+              endpoint,
+              errorType: 'api_error'
             }
-          }
+          };
         }
 
         // Handle successful response with proper JSON parsing
@@ -1240,6 +1845,11 @@ export class PipedriveService {
             }
           }
           data = JSON.parse(responseText)
+          
+          // Debug logging for successful responses
+          if (options.method === 'POST') {
+            console.log('Pipedrive API response:', JSON.stringify(data, null, 2));
+          }
         } catch (parseError) {
           console.error('Failed to parse Pipedrive API response:', parseError)
           return {

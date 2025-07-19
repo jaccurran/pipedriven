@@ -14,15 +14,18 @@ vi.mock('@/lib/prisma', () => ({
     },
     contact: {
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),
     },
+    $transaction: vi.fn()
   },
 }))
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { ActivityService } from '@/server/services/activityService'
+import { ActivityReplicationService } from '@/server/services/activityReplicationService';
 import { prisma } from '@/lib/prisma'
 import type { Activity, ActivityType, Contact, User } from '@prisma/client'
 
@@ -33,9 +36,16 @@ describe('ActivityService', () => {
   let mockUser: User
   let mockContact: Contact
   let mockActivity: Activity
+  let mockReplicationService: any;
+  let mockTransaction: any;
 
   beforeEach(() => {
-    activityService = new ActivityService()
+    mockReplicationService = {
+      replicateActivity: vi.fn()
+    };
+    mockTransaction = vi.mocked(prisma.$transaction);
+    
+    activityService = new ActivityService(mockReplicationService)
     
     mockUser = {
       id: 'user-123',
@@ -97,23 +107,24 @@ describe('ActivityService', () => {
         userId: mockUser.id,
       };
 
-      (mockPrisma.activity.create as any).mockResolvedValue(mockActivity);
       (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact);
       (mockPrisma.user.findUnique as any).mockResolvedValue(mockUser);
+      mockTransaction.mockImplementation(async (callback) => {
+        return callback({
+          activity: {
+            create: vi.fn().mockResolvedValue(mockActivity)
+          },
+          contact: {
+            update: vi.fn()
+          }
+        });
+      });
 
       // Act
       const result = await activityService.createActivity(activityData);
 
       // Assert
       expect(result).toEqual(mockActivity);
-      expect(mockPrisma.activity.create).toHaveBeenCalledWith({
-        data: activityData,
-        include: {
-          contact: true,
-          user: true,
-          campaign: true,
-        },
-      });
     });
 
     it('should throw error when contact not found', async () => {
@@ -166,12 +177,187 @@ describe('ActivityService', () => {
 
       (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact);
       (mockPrisma.user.findUnique as any).mockResolvedValue(mockUser);
-      (mockPrisma.activity.create as any).mockRejectedValue(new Error('Database error'));
+      mockTransaction.mockImplementation(async (callback) => {
+        return callback({
+          activity: {
+            create: vi.fn().mockRejectedValue(new Error('Database error'))
+          },
+          contact: {
+            update: vi.fn()
+          }
+        });
+      });
 
       // Act & Assert
       await expect(activityService.createActivity(activityData)).rejects.toThrow('Database error');
     });
   })
+
+  describe('createActivity with replication', () => {
+    it('should replicate activity when contact has Pipedrive ID', async () => {
+      const createData = {
+        type: 'EMAIL' as const,
+        subject: 'Test email',
+        contactId: 'contact-123',
+        userId: 'user-456'
+      };
+
+      const mockContact = {
+        id: 'contact-123',
+        pipedrivePersonId: '789'
+      };
+
+      const mockUser = {
+        id: 'user-456'
+      };
+
+      const mockActivity = {
+        id: 'activity-789',
+        ...createData
+      };
+
+      (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact as any);
+      (mockPrisma.user.findUnique as any).mockResolvedValue(mockUser as any);
+      mockTransaction.mockImplementation(async (callback) => {
+        return callback({
+          activity: {
+            create: vi.fn().mockResolvedValue(mockActivity)
+          },
+          contact: {
+            update: vi.fn()
+          }
+        });
+      });
+
+      (mockReplicationService.replicateActivity as any).mockResolvedValue(true);
+
+      const result = await activityService.createActivity(createData);
+
+      expect(result).toEqual(mockActivity);
+      expect(mockReplicationService.replicateActivity).toHaveBeenCalledWith({
+        activityId: 'activity-789',
+        contactId: 'contact-123',
+        userId: 'user-456'
+      });
+    });
+
+    it('should not replicate activity when no contact ID provided', async () => {
+      const createData = {
+        type: 'EMAIL' as const,
+        subject: 'Test email',
+        userId: 'user-456'
+        // No contactId
+      };
+
+      const mockUser = {
+        id: 'user-456'
+      };
+
+      const mockActivity = {
+        id: 'activity-789',
+        ...createData
+      };
+
+      (mockPrisma.user.findUnique as any).mockResolvedValue(mockUser as any);
+      mockTransaction.mockImplementation(async (callback) => {
+        return callback({
+          activity: {
+            create: vi.fn().mockResolvedValue(mockActivity)
+          }
+        });
+      });
+
+      const result = await activityService.createActivity(createData);
+
+      expect(result).toEqual(mockActivity);
+      expect(mockReplicationService.replicateActivity).not.toHaveBeenCalled();
+    });
+
+    it('should not fail activity creation when replication fails', async () => {
+      const createData = {
+        type: 'EMAIL' as const,
+        subject: 'Test email',
+        contactId: 'contact-123',
+        userId: 'user-456'
+      };
+
+      const mockContact = {
+        id: 'contact-123',
+        pipedrivePersonId: '789'
+      };
+
+      const mockUser = {
+        id: 'user-456'
+      };
+
+      const mockActivity = {
+        id: 'activity-789',
+        ...createData
+      };
+
+      (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact as any);
+      (mockPrisma.user.findUnique as any).mockResolvedValue(mockUser as any);
+      mockTransaction.mockImplementation(async (callback) => {
+        return callback({
+          activity: {
+            create: vi.fn().mockResolvedValue(mockActivity)
+          },
+          contact: {
+            update: vi.fn()
+          }
+        });
+      });
+
+      (mockReplicationService.replicateActivity as any).mockRejectedValue(new Error('Replication failed'));
+
+      const result = await activityService.createActivity(createData);
+
+      expect(result).toEqual(mockActivity);
+      expect(mockReplicationService.replicateActivity).toHaveBeenCalled();
+    });
+
+    it('should work without replication service', async () => {
+      const serviceWithoutReplication = new ActivityService();
+      const createData = {
+        type: 'EMAIL' as const,
+        subject: 'Test email',
+        contactId: 'contact-123',
+        userId: 'user-456'
+      };
+
+      const mockContact = {
+        id: 'contact-123',
+        pipedrivePersonId: '789'
+      };
+
+      const mockUser = {
+        id: 'user-456'
+      };
+
+      const mockActivity = {
+        id: 'activity-789',
+        ...createData
+      };
+
+      (mockPrisma.contact.findUnique as any).mockResolvedValue(mockContact as any);
+      (mockPrisma.user.findUnique as any).mockResolvedValue(mockUser as any);
+      mockTransaction.mockImplementation(async (callback) => {
+        return callback({
+          activity: {
+            create: vi.fn().mockResolvedValue(mockActivity)
+          },
+          contact: {
+            update: vi.fn()
+          }
+        });
+      });
+
+      const result = await serviceWithoutReplication.createActivity(createData);
+
+      expect(result).toEqual(mockActivity);
+      // Should not throw any errors
+    });
+  });
 
   describe('getActivities', () => {
     it('should return activities with default pagination', async () => {

@@ -8,184 +8,212 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Error Boundary**: Added global ErrorBoundary component to catch JSON parsing errors and other runtime errors
-- **Enhanced Error Handling**: Improved API error responses with better serialization validation
-- **Rate Limiting Improvements**: Enhanced Pipedrive API rate limiting with proper retry delays and exponential backoff
+- **Campaign Shortcode Pipedrive Integration**: Enhanced Pipedrive activity naming with campaign shortcodes
+  - **CMPGN Format**: All activities now use `[CMPGN-SHORTCODE]` prefix in Pipedrive subject lines
+  - **Examples**: `[CMPGN-ASC] 📞 Phone Call - John Doe by Test User (Adult Social Care)`
+  - **PipedriveService**: Updated to automatically include campaign shortcodes in activity subjects
+  - **WarmLeadService**: Updated to use `[CMPGN-WARM]` prefix for warm lead activities
+  - **Comprehensive Testing**: Added 5 new tests specifically for CMPGN format validation
+  - **Backward Compatibility**: Activities without campaigns or shortcodes work normally
+  - **Result**: Better campaign tracking and organization in Pipedrive
+
+- **Enhanced Activity Descriptions**: Made activity descriptions more adventurous and engaging
+  - Added emojis to all activity types for better visual distinction
+  - Updated activity subjects and notes to be more descriptive and engaging
+  - Enhanced both PipedriveService and ContactDetailSlideover components
+  - Improved user experience with more colorful and informative activity descriptions
 
 ### Fixed
-- **JSON Parsing Errors**: Fixed "Unexpected end of JSON input" errors by improving response handling
-- **Rate Limiting**: Improved Pipedrive API rate limiting with proper retry logic and delays
-- **API Response Serialization**: Added validation to ensure all API responses are properly serializable
-- **Session Validation**: Fixed session invalidation when users no longer exist in database
-- **API Key Validation**: Reduced excessive API key validation calls with caching and optimization
+- **Secondary Activity Notes**: Fixed notes from secondary activities (LinkedIn, Phone Call, Conference) not being saved to Pipedrive
+  - **ActionMenu.tsx**: Updated to pass notes along with action type to onAction callback
+  - **ContactCard.tsx**: Updated handleSecondaryAction to accept and pass notes to onActivity callback
+  - **My500Page.tsx**: Updated to store and pass notes to ActivityForm
+  - **My500Client.tsx**: Updated to handle notes in secondary actions and pass to ActivityForm
+  - **ContactDetailSlideover.tsx**: Updated to use notes in activity descriptions
+  - **CampaignContactList.tsx**: Updated to handle notes in activity creation
+  - **Result**: Notes entered in secondary action modals are now properly saved to Pipedrive activity descriptions
 
-### Performance
-- **API Key Caching**: Implemented 5-minute caching for API key validation to reduce redundant calls
-- **Rate Limit Handling**: Added proper retry delays for Pipedrive API rate limiting (2-second default)
-- **Error Recovery**: Enhanced error handling with better diagnostics and recovery strategies
+- **Organization ID in Pipedrive Activities**: Fixed organization ID not being set when creating activities in Pipedrive
+  - **Root Cause**: Contacts had `organisation` strings but no Organization records or `pipedriveOrgId` values
+  - **WarmLeadService**: Enhanced to create organizations in Pipedrive and link them to contacts
+  - **PipedriveOrganizationService**: Now properly integrated to find/create organizations
+  - **API Route**: Updated to pass PipedriveOrganizationService to WarmLeadService
+  - **ActivityReplicationService**: Ensures organization ID is properly passed to PipedriveService.createActivity
+  - **PipedriveService**: Correctly sets org_id in activity data sent to Pipedrive API
+  - **Fix Script**: Created `scripts/fix-organization-relationships.ts` to fix existing contacts
+  - **Result**: Activities created in Pipedrive now properly include the organization ID
+
+- **Phone Call Activity Type Mapping**: Fixed phone calls being incorrectly mapped to email activities
+  - **Root Cause**: TypeScript type error in My500Page component causing activity type mapping to fail
+  - **My500Page**: Fixed activityTypeMap type definition to include all valid activity types
+  - **Result**: Phone calls now correctly create activities with type 'CALL' instead of 'EMAIL'
+
+- **Activity Type Mapping**: Fixed incorrect mapping of activity types across multiple components
+  - **LinkedIn Activities**: Fixed `LINKEDIN: 'EMAIL'` → `LINKEDIN: 'LINKEDIN'` in all components
+  - **Meeting Requests**: Fixed `MEETING_REQUEST: 'MEETING'` → `MEETING_REQUEST: 'MEETING_REQUEST'` in all components
+  - **Phone Calls**: Fixed `PHONE_CALL: 'MEETING'` → `PHONE_CALL: 'CALL'` in all components
+  - **Conference Activities**: Fixed `CONFERENCE: 'MEETING'` → `CONFERENCE: 'CONFERENCE'` in ContactCard, My500Page, CampaignContactList
+  - **My500Client.tsx**: Added missing secondary action handling for PHONE_CALL, LINKEDIN, and CONFERENCE activities
+  - **Result**: All activity types now correctly map to their proper types in the app and Pipedrive
+  - **Toast Messages**: Now correctly show the actual activity type instead of generic "Email" or "Meeting"
+  - **Pipedrive Mapping**: Activities are properly categorized in Pipedrive (LINKEDIN → 'task', MEETING_REQUEST → 'lunch', PHONE_CALL → 'call', CONFERENCE → 'meeting')
+
+- **MEETING_REQUEST Activity Type Mapping**: Fixed missing mapping for MEETING_REQUEST activities
+
+### Changed
+- **Activity Description Format**: Updated all activity descriptions to include emojis and more engaging language
+  - **Phone Calls**: 📞 Phone Call/Call with [contact]
+  - **Emails**: 📧 Email Communication/Email to [contact]
+  - **Meetings**: 🤝 Meeting/Meeting with [contact]
+  - **Meeting Requests**: 🍽️ Meeting Request (maps to 'lunch' in Pipedrive)
+  - **LinkedIn**: 💼 LinkedIn Engagement/Engagement with [contact]
+  - **Referrals**: 🔄 Referral Activity/Activity with [contact]
+  - **Conference**: 🎤 Conference meeting at conference event with [contact]
+  - **Completed Meetings**: ✅ Meeting Completed
+
+### Technical Details
+- **PipedriveService**: Enhanced getDefaultSubject() and getDefaultNote() functions
+  - Added emoji prefixes to all activity types
+  - Improved descriptive language for better context
+  - Maintained rich context inclusion (contact, user, organization, campaign)
+
+- **ContactDetailSlideover**: Updated quick action handlers
+  - Enhanced handlePrimaryAction() with emoji-rich descriptions
+  - Enhanced handleSecondaryAction() with more engaging language
+  - Updated handleMeetingPlanned() and handleMeetingCompleted() with visual indicators
+  - Maintained all existing functionality while improving user experience
+
+### User Experience
+- **Visual Enhancement**: Activities now have distinctive visual indicators
+  - Emojis make it easier to quickly identify activity types
+  - More engaging descriptions improve user engagement
+  - Better context information in activity notes
+  - Consistent formatting across all activity creation methods
+
+### Added
+- **User Preferences Quick Action Mode Integration**: My-500 and Campaigns pages now respect user preferences
+  - My-500 page (`My500Client`) now defaults to user's `quickActionMode` preference instead of always 'SIMPLE'
+  - Campaigns page (`CampaignContactList`) now defaults to user's `quickActionMode` preference instead of always 'SIMPLE'
+  - Both pages maintain the ability to toggle between modes during the session
+  - Comprehensive test coverage with 8 passing tests covering both pages and all preference scenarios
+  - Tests verify correct default behavior for both SIMPLE and DETAILED user preferences
+  - Tests verify correct action behavior (direct logging vs modal) based on user preference
+
+### Changed
+- **My500Client Component**: Updated to use user preference for quick action mode initialization
+  - Changed from hardcoded `'SIMPLE'` to `user.quickActionMode || 'SIMPLE'`
+  - Added proper user prop destructuring in component parameters
+  - Maintains backward compatibility with fallback to 'SIMPLE' if preference not set
+
+- **CampaignContactList Component**: Updated to use user preference for quick action mode initialization
+  - Changed from hardcoded `'SIMPLE'` to `user.quickActionMode || 'SIMPLE'`
+  - Added test integration flag for modal testing
+  - Maintains backward compatibility with fallback to 'SIMPLE' if preference not set
+
+### Technical Details
+- **Test Coverage**: Added comprehensive integration tests
+  - `src/__tests__/app/my-500/user-preferences-integration.test.tsx` - 4 tests covering My-500 page
+  - `src/__tests__/app/campaigns/user-preferences-integration.test.tsx` - 4 tests covering Campaigns page
+  - Tests follow TDD approach and project testing patterns
+  - Mock React Query hooks to prevent real API calls during testing
+  - Verify both UI state (toggle display) and behavior (action handling)
+
+### Testing
+- **Integration Tests**: 8 comprehensive tests covering user preference scenarios
+  - Tests verify correct default mode based on user preference
+  - Tests verify correct action behavior (SIMPLE vs DETAILED)
+  - Tests verify UI state reflects user preference
+  - All tests pass and follow project testing standards
+
+### Added
+- **User Preferences Feature Specification**: Comprehensive UI specification for user preferences screen
+  - Documented in `docs/UI/User_Preferences_Specification.md`
+  - Includes mobile-first design, accessibility requirements, and security considerations
+  - Covers password change, role selection, API key management, and application preferences
+
+- **User Preferences Implementation Plan**: TDD-based implementation roadmap
+  - Documented in `docs/UI/User_Preferences_Implementation_Plan.md`
+  - 6-week phased approach following TDD principles
+  - Includes database schema updates, API routes, components, and comprehensive testing
+
+- **User Preferences Test Regime**: Comprehensive testing strategy
+  - Documented in `docs/testing/User_Preferences_Test_Regime.md`
+  - Follows project's TDD approach and testing patterns
+  - Targets 80%+ test coverage with unit, integration, and E2E tests
+
+- **Navigation Updates**: Added preferences link to navigation menus
+  - Updated `SidebarNavigation.tsx` to include preferences link in ellipsis menu
+  - Updated `TopNavigation.tsx` to include preferences link in user dropdown
+  - Maintains consistent navigation patterns across mobile and desktop
+
+### Changed
+- **Documentation Structure**: Enhanced UI documentation with new specifications
+  - Added user preferences to UI specification documents
+  - Updated navigation system documentation to include preferences access points
+  - Maintained consistency with existing mobile-first design principles
+
+### Technical Details
+- **Database Schema**: Planned addition of user preference fields
+  - `quickActionMode`: ENUM('SIMPLE', 'DETAILED')
+  - `emailNotifications`: Boolean
+  - `activityReminders`: Boolean
+  - `campaignUpdates`: Boolean
+  - `syncStatusAlerts`: Boolean
+
+- **API Routes**: Planned new endpoints
+  - `GET /api/user/preferences` - Fetch user preferences
+  - `PUT /api/user/preferences` - Update user preferences
+  - `POST /api/user/change-password` - Change user password
+  - `PUT /api/user/pipedrive-api-key` - Update Pipedrive API key
+
+- **Components**: Planned new preference components
+  - `ChangePasswordForm` - Password change modal/form
+  - `RoleSelectionForm` - Role selection radio buttons
+  - `ApiKeyManagementForm` - API key management
+  - `QuickActionModeToggle` - Quick action mode toggle
+  - `NotificationSettingsForm` - Notification settings checkboxes
+  - `PreferencesLayout` - Responsive layout wrapper
+  - `PreferencesSection` - Reusable section wrapper
+
+- **Testing Strategy**: Comprehensive test coverage plan
+  - Unit tests for all components and services
+  - Integration tests for API routes and component interactions
+  - E2E tests for complete user workflows
+  - Accessibility and security testing included
 
 ### Security
-- **Session Security**: Improved session validation to prevent access with invalid user sessions
-- **API Key Security**: Enhanced API key validation with proper error handling and caching
+- **Password Security**: Planned implementation of secure password change
+  - Current password validation required
+  - Minimum 8-character password requirement
+  - Password strength validation
+  - Rate limiting for password change attempts
 
-### Fixed
-- **API Key Validation Endpoint Issues** - Resolved JSON parsing errors and endpoint inconsistencies
-  - **JSON Parsing Errors**: Fixed "Unexpected end of JSON input" errors by adding proper error handling for empty request bodies
-  - **Endpoint Standardization**: Unified all components to use `/api/auth/validate-api-key` endpoint instead of multiple inconsistent endpoints
-  - **Component Updates**: Fixed `EnhancedAuthFlow` and `PipedriveApiKeyForm` components to use correct API endpoint
-  - **Error Handling**: Enhanced API route to handle malformed JSON, empty bodies, and invalid API key formats gracefully
-  - **Database Cleanup**: Removed invalid API keys causing "Invalid encrypted data format" errors
-  - **Pipedrive API Authentication**: Standardized to use Bearer token authentication method consistently
-  - **Debug Scripts**: Created comprehensive debugging and testing scripts for API key management
+- **API Key Security**: Enhanced API key management
+  - API key encryption and masking
+  - Format validation (must start with "api_")
+  - Connection testing functionality
+  - Secure storage and retrieval
 
-### Added
-- **API Key Encryption and Enhanced Login Flow** - Complete implementation of secure API key storage and improved user onboarding
-  - **Security Enhancement**: Implemented AES-256-GCM encryption for Pipedrive API keys stored in database
-  - **Enhanced Authentication Flow**: Added API key validation during login with guided setup for new users
-  - **Middleware Integration**: Created enhanced authentication middleware that checks API key validity
-  - **UI Components**: Implemented ApiKeyChecker, ApiKeySetupDialog, and EnhancedLoginFlow components
-  - **TDD Implementation**: Comprehensive test coverage following project's TDD methodology
-  - **Integration Tests**: Full integration tests for authentication flow and API key management
-  - **E2E Tests**: End-to-end tests for complete user journey scenarios
-  - **Error Handling**: Graceful error handling for API key validation failures and network issues
-  - **Security Features**: 
-    - API keys encrypted at rest using environment-based encryption keys
-    - No sensitive data exposed in error messages
-    - Proper access controls and audit logging
-    - HTTPS transmission for all API key operations
-  - **User Experience Improvements**:
-    - Clear guidance for API key setup with help content
-    - Real-time API key validation with immediate feedback
-    - Seamless onboarding flow for new users
-    - Graceful handling of API key expiration and updates
-  - **Performance Optimizations**:
-    - Cached API key validation results
-    - Optimized encryption/decryption operations
-    - Minimal impact on login performance
-  - **Monitoring and Alerting**: 
-    - Login success rate monitoring
-    - API key validation monitoring
-    - Encryption error monitoring
-    - Performance monitoring
-
-### Changed
-- **Dashboard Integration**: Updated dashboard page to use enhanced authentication flow
-- **Layout Updates**: Modified main layout to include API key validation wrapper
-- **Authentication Flow**: Enhanced authentication to include API key validation step
-- **Debug Logging**: Removed debug logging from production code for cleaner console output
-
-### Technical Details
-- **Encryption Implementation**: Uses Node.js crypto module with AES-256-GCM
-- **Environment Variables**: Added `API_KEY_ENCRYPTION_SECRET` for encryption key management
-- **Database Schema**: Updated to store encrypted API keys (no migration needed for new system)
-- **API Routes**: Enhanced to handle encrypted API key storage and retrieval
-- **Service Layer**: Updated PipedriveService to work with encrypted API keys
-- **Test Coverage**: 100% test coverage for new authentication and encryption features
-- **Security Review**: Comprehensive security review of encryption implementation
-- **Performance Testing**: Extensive performance testing for encryption and validation operations
-
-### Files Modified
-- `src/lib/auth.ts` - Enhanced authentication callbacks
-- `src/middleware.ts` - New enhanced authentication middleware
-- `src/app/dashboard/page.tsx` - Updated to use enhanced authentication flow
-- `src/app/layout.tsx` - Added API key validation wrapper
-- `src/components/auth/ApiKeyChecker.tsx` - API key validation component
-- `src/components/auth/ApiKeySetupDialog.tsx` - API key setup dialog
-- `src/components/auth/EnhancedLoginFlow.tsx` - Enhanced login flow component
-- `src/app/api/auth/validate-api-key/route.ts` - Unified API key validation endpoint
-- `src/lib/apiKeyEncryption.ts` - API key encryption utilities
-- `src/__tests__/integration/auth-flow.test.ts` - Integration tests
-- `src/__tests__/integration/api-key-management.test.ts` - API key management tests
-- `src/__tests__/middleware/enhancedAuth.test.ts` - Middleware tests
-- `src/__tests__/e2e/user-journey.test.ts` - End-to-end tests
-
-### Breaking Changes
-- None - Implementation is backward compatible
-
-### Migration Notes
-- New users will automatically use the enhanced authentication flow
-- Existing users will be prompted to set up API keys if they don't have them
-- No data migration required - new system starts with encrypted storage
+### Accessibility
+- **WCAG 2.1 AA Compliance**: Full accessibility support planned
+  - Proper form labels and associations
+  - Keyboard navigation support
+  - Screen reader compatibility
+  - Color contrast compliance
+  - Focus management and indicators
 
 ### Performance
-- **Pipedrive Sync Optimization** - Eliminated rate limit issues and improved sync performance
-  - **Efficient Data Extraction**: Now uses data from initial Pipedrive API response instead of making separate API calls per contact
-  - **Rate Limit Resolution**: Eliminated hundreds of API calls during sync that were causing rate limit issues
-  - **Last Contacted Date**: Automatically imports `last_activity_date` from Pipedrive for accurate "last contacted" information
-  - **Sync Speed**: Reduced sync time from minutes to seconds by using data already available in initial response
+- **Mobile Optimization**: Mobile-first design approach
+  - Touch-optimized interface elements
+  - Responsive layout for all screen sizes
+  - Optimized loading and rendering
+  - Efficient form validation and submission
 
-### Added
-- **Enhanced Contact Data from Pipedrive** - Added comprehensive contact analytics and engagement data
-  - **Deal Information**: 
-    - `openDealsCount` - Number of open deals
-    - `closedDealsCount` - Number of closed deals  
-    - `wonDealsCount` - Number of won deals
-    - `lostDealsCount` - Number of lost deals
-  - **Activity Metrics**:
-    - `activitiesCount` - Total activities
-    - `emailMessagesCount` - Number of email messages
-    - `lastActivityDate` - Date of last activity (used for "last contacted")
-  - **Email Engagement**:
-    - `lastIncomingMailTime` - Last incoming email time
-    - `lastOutgoingMailTime` - Last outgoing email time
-  - **Social and Metadata**:
-    - `followersCount` - Number of followers
-    - `jobTitle` - Contact's job title
-  - **Database Schema**: Added new fields to Contact model with proper indexing
-  - **API Integration**: Updated all contact APIs to return new fields
-  - **Type Safety**: Updated TypeScript interfaces and validation schemas
+## [Previous Releases]
 
-### Fixed
-- **Organization Linking in Sync** - Fixed contacts not being linked to organizations during sync
-  - **Root Cause**: Pipedrive API returns `org_id` as an object with a `value` property, not a simple number
-  - **Solution**: Updated `PipedrivePerson` interface and sync logic to handle org_id objects correctly
-  - **Impact**: Contacts are now properly linked to organizations with correct `organizationId` field
-  - **Data Integrity**: Fixed 123 orphaned contacts that had `pipedriveOrgId` but no `organizationId`
-
-- **Sync Rate Limiting** - Resolved massive rate limit issues during Pipedrive sync
-  - **Root Cause**: Sync was making separate API calls for each contact to fetch activity data
-  - **Solution**: Use data already available in initial Pipedrive persons API response
-  - **Impact**: Sync now completes in seconds instead of hitting rate limits
-
-### Changed
-- **Contact Creation Logic**: Updated to use `last_activity_date` from Pipedrive as `lastContacted` field
-- **Database Schema**: Added 11 new fields to Contact model for comprehensive Pipedrive data
-- **API Responses**: Enhanced contact APIs to include all new Pipedrive fields
-- **Type Definitions**: Updated CreateContactInput and related interfaces
-
-### Technical Details
-- **Database Migration**: `20250717204821_add_pipedrive_fields_to_contacts`
-- **New Fields**: Added to Contact model with proper defaults and nullable types
-- **API Updates**: Modified `/api/my-500` and `/api/my-500/search` to return new fields
-- **Sync Logic**: Updated `mapPipedriveContact` function to extract all available data
-- **Type Safety**: Updated all TypeScript interfaces and validation schemas
-- **Performance**: Eliminated N+1 API call problem during sync
-
-### Files Modified
-- `prisma/schema.prisma` - Added new Contact fields
-- `src/server/services/pipedriveService.ts` - Updated PipedrivePerson interface
-- `src/lib/types.ts` - Updated CreateContactInput interface
-- `src/app/api/pipedrive/contacts/sync/route.ts` - Updated sync logic
-- `src/server/services/contactService.ts` - Updated CreateContactData interface
-- `src/app/api/my-500/route.ts` - Added new fields to API response
-- `src/app/api/my-500/search/route.ts` - Added new fields to search API response
-
-### Breaking Changes
-- None - All changes are additive and backward compatible
-
-### Migration Notes
-- Database migration required to add new fields
-- Existing contacts will have default values for new fields
-- Sync will populate new fields for all contacts on next sync
-
-## [Previous Entries]
-- **API Key Validation Optimization**: Reduced excessive API key validation calls by implementing caching and removing redundant checks
-- **Session Management**: Fixed session invalidation for non-existent users and improved error handling
-- **Mobile-First Design**: Updated UI specifications and implementation plan for mobile-first approach
-- **Navigation System**: Implemented responsive navigation with sidebar for desktop and bottom tabs for mobile
-- **Logo Implementation**: Created and integrated custom logo with proper sizing and positioning
-- **Database Seeding**: Implemented comprehensive database seeding with test data
-- **Authentication Flow**: Enhanced authentication with proper session handling and API key validation
-- **Pipedrive Integration**: Complete Pipedrive API integration with contact sync, organization management, and activity tracking
-- **Campaign Management**: Full campaign system with contact assignment and warmness scoring
-- **My-500 Feature**: Implemented My-500 contact management with filtering and search capabilities 
+### [0.1.0] - 2024-01-15
+- Initial project setup
+- Basic authentication system
+- Campaign management features
+- Contact management system
+- Pipedrive integration foundation 

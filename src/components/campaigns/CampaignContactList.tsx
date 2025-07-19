@@ -6,10 +6,13 @@ import { ContactCard } from '@/components/contacts/ContactCard'
 import { ContactForm } from '@/components/contacts/ContactForm'
 import { AddContactModal } from '@/components/campaigns/AddContactModal'
 import { ActivityForm } from '@/components/activities/ActivityForm'
+import { DeactivateConfirmationModal } from '@/components/contacts/DeactivateConfirmationModal'
+import { ReactivateConfirmationModal } from '@/components/contacts/ReactivateConfirmationModal'
 import { Button } from '@/components/ui'
 import { Modal } from '@/components/ui/Modal'
 import { QuickActionToggle } from '@/components/ui/QuickActionToggle'
 import { cn } from '@/lib/utils'
+import { useContactActions } from '@/hooks/useContactActions'
 
 // Type definitions for contact selection
 interface PipedriveContact {
@@ -48,7 +51,8 @@ export function CampaignContactList({
   const [showCreateContactModal, setShowCreateContactModal] = useState(false)
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
-  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
+  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST' | 'LINKEDIN' | 'REFERRAL' | 'CONFERENCE'>('EMAIL')
+  const [selectedNote, setSelectedNote] = useState<string>('')
   const [isLoadingAction, setIsLoadingAction] = useState(false)
   const [isCreatingContact, setIsCreatingContact] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
@@ -57,10 +61,18 @@ export function CampaignContactList({
   const [pipedriveContacts, setPipedriveContacts] = useState<PipedriveContact[]>([])
   const [loadingPipedrive, setLoadingPipedrive] = useState(false)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
+  const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>(user.quickActionMode || 'SIMPLE')
   
   // State to track contact updates (for optimistic updates)
   const [contactUpdates, setContactUpdates] = useState<Record<string, Partial<Contact>>>({})
+
+  // Contact deactivation/reactivation state
+  const [deactivateModalOpen, setDeactivateModalOpen] = useState(false)
+  const [reactivateModalOpen, setReactivateModalOpen] = useState(false)
+  const [actionContact, setActionContact] = useState<Contact | null>(null)
+
+  // Contact actions hook
+  const { deactivateContact, reactivateContact } = useContactActions()
 
   // Merge original contacts with updates
   const mergedContacts = useMemo(() => {
@@ -317,7 +329,7 @@ export function CampaignContactList({
     console.log(`Warmness updated for contact ${contactId} to ${newScore}`)
   }, [])
 
-  const handleActivity = useCallback(async (contactId: string, actionType: string) => {
+  const handleActivity = useCallback(async (contactId: string, actionType: string, note?: string) => {
     // For test integration - expose mode globally
     if (typeof window !== 'undefined') {
       (window as unknown as Record<string, unknown>).__quickActionMode = quickActionMode
@@ -330,9 +342,9 @@ export function CampaignContactList({
         // Map action types to activity types
         const activityTypeMap: Record<string, string> = {
           'EMAIL': 'EMAIL',
-          'MEETING_REQUEST': 'MEETING',
+          'MEETING_REQUEST': 'MEETING_REQUEST', // Fixed: Meeting requests should be MEETING_REQUEST type
           'MEETING': 'MEETING',
-          'LINKEDIN': 'LINKEDIN',
+          'LINKEDIN': 'LINKEDIN', // Fixed: LinkedIn activities should be LINKEDIN type
           'PHONE_CALL': 'CALL',
           'CONFERENCE': 'CONFERENCE'
         }
@@ -349,7 +361,7 @@ export function CampaignContactList({
             type: activityType,
             contactId: contactId,
             campaignId: campaign.id,
-            note: `Activity logged: ${actionType}`,
+            note: note || `Activity logged: ${actionType}`,
           }),
         })
 
@@ -382,16 +394,23 @@ export function CampaignContactList({
       const contact = contacts.find(c => c.id === contactId)
       if (contact) {
         setSelectedContact(contact)
-        const activityTypeMap: Record<string, 'EMAIL' | 'CALL' | 'MEETING'> = {
+        const activityTypeMap: Record<string, 'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST' | 'LINKEDIN' | 'REFERRAL' | 'CONFERENCE'> = {
           'EMAIL': 'EMAIL',
-          'MEETING_REQUEST': 'MEETING',
+          'MEETING_REQUEST': 'MEETING_REQUEST',
           'MEETING': 'MEETING',
-          'LINKEDIN': 'EMAIL',
+          'LINKEDIN': 'LINKEDIN',
           'PHONE_CALL': 'CALL',
-          'CONFERENCE': 'MEETING'
+          'CONFERENCE': 'CONFERENCE',
+          'REFERRAL': 'REFERRAL'
         }
         setActivityType(activityTypeMap[actionType] || 'EMAIL')
+        setSelectedNote(note || '')
         setShowActivityModal(true)
+        
+        // For test integration
+        if (typeof window !== 'undefined') {
+          (window as unknown as Record<string, unknown>).__modalShown = true
+        }
         
         // Fetch campaigns if not already loaded
         if (campaigns.length === 0) {
@@ -475,6 +494,18 @@ export function CampaignContactList({
     }
   }, [])
 
+  const handleDeactivateContact = useCallback((contact: Contact) => {
+    setActionContact(contact)
+    setDeactivateModalOpen(true)
+  }, [])
+
+  const handleReactivateContact = useCallback((contact: Contact) => {
+    setActionContact(contact)
+    setReactivateModalOpen(true)
+  }, [])
+
+  // Remove unused functions since we handle the logic inline in the modal props
+
 
 
   if (isLoading) {
@@ -541,8 +572,10 @@ export function CampaignContactList({
               contact={contact}
               onEdit={handleEditContact}
               onDelete={() => handleContactRemove(contact.id)}
-              onActivity={(contactId, actionType) => handleActivity(contactId, actionType)}
+              onActivity={(contactId, actionType, note) => handleActivity(contactId, actionType, note)}
               onWarmnessUpdate={handleWarmnessUpdate}
+              onDeactivate={handleDeactivateContact}
+              onReactivate={handleReactivateContact}
               className="border border-gray-200 rounded-lg p-4"
             />
           ))}
@@ -617,14 +650,63 @@ export function CampaignContactList({
             onSubmit={handleActivitySubmit}
             onCancel={handleActivityCancel}
             initialData={{
-              type: activityType,
-              subject: `${activityType} with ${selectedContact.name}`,
+              type: activityType === 'MEETING_REQUEST' ? 'MEETING' : activityType,
+              subject: `${activityType === 'MEETING_REQUEST' ? 'Meeting Request' : activityType} with ${selectedContact.name}`,
               contactId: selectedContact.id,
               campaignId: campaign.id,
+              note: selectedNote,
             }}
           />
         )}
       </Modal>
+
+      {/* Deactivate Confirmation Modal */}
+      <DeactivateConfirmationModal
+        isOpen={deactivateModalOpen}
+        onCancel={() => {
+          setDeactivateModalOpen(false)
+          setActionContact(null)
+        }}
+        onConfirm={async (options) => {
+          if (!actionContact) return
+          try {
+            await deactivateContact(actionContact.id, options)
+            setDeactivateModalOpen(false)
+            setActionContact(null)
+            if (onContactsUpdate) {
+              onContactsUpdate()
+            }
+          } catch (error) {
+            console.error('Failed to deactivate contact:', error)
+          }
+        }}
+        contactName={actionContact?.name}
+        isLoading={isLoadingAction}
+      />
+
+      {/* Reactivate Confirmation Modal */}
+      <ReactivateConfirmationModal
+        isOpen={reactivateModalOpen}
+        onCancel={() => {
+          setReactivateModalOpen(false)
+          setActionContact(null)
+        }}
+        onConfirm={async (options) => {
+          if (!actionContact) return
+          try {
+            await reactivateContact(actionContact.id, options)
+            setReactivateModalOpen(false)
+            setActionContact(null)
+            if (onContactsUpdate) {
+              onContactsUpdate()
+            }
+          } catch (error) {
+            console.error('Failed to reactivate contact:', error)
+          }
+        }}
+        contactName={actionContact?.name}
+        isLoading={isLoadingAction}
+      />
 
       {/* Success Message Toast */}
       {showSuccessMessage && (

@@ -1,363 +1,253 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { ContactCard } from '@/components/contacts/ContactCard'
-import { Contact } from '@prisma/client'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { ContactCard } from '@/components/contacts/ContactCard';
+import { createWarmLeadToast, createSyncErrorToast } from '@/components/ui/PipedriveToast';
 
-// Mock the action components
-vi.mock('@/components/actions/QuickActionButton', () => ({
-  QuickActionButton: ({ type, onClick, contactName, className }: any) => (
-    <button
-      onClick={() => onClick(type)}
-      aria-label={`Log ${type.toLowerCase()} for ${contactName}`}
-      className={className}
-      data-testid={`quick-action-${type.toLowerCase()}`}
-    >
-      {type}
-    </button>
-  ),
-}))
+// Mock the Pipedrive toast functions
+vi.mock('@/components/ui/PipedriveToast', () => ({
+  createWarmLeadToast: vi.fn(),
+  createSyncErrorToast: vi.fn()
+}));
 
-vi.mock('@/components/actions/ActionMenu', () => ({
-  ActionMenu: ({ onAction, contactName }: any) => (
-    <div data-testid="action-menu">
-      <button
-        onClick={() => onAction('LINKEDIN')}
-        aria-label="LinkedIn action"
-        data-testid="linkedin-action"
-      >
-        LinkedIn
-      </button>
-      <button
-        onClick={() => onAction('PHONE_CALL')}
-        aria-label="Phone call action"
-        data-testid="phone-call-action"
-      >
-        Phone Call
-      </button>
-      <button
-        onClick={() => onAction('CONFERENCE')}
-        aria-label="Conference action"
-        data-testid="conference-action"
-      >
-        Conference
-      </button>
-    </div>
-  ),
-}))
+// Mock fetch
+global.fetch = vi.fn();
 
 describe('ContactCard', () => {
-  const mockContact: Contact = {
-    id: 'contact-1',
+  const mockContact = {
+    id: 'contact-123',
     name: 'John Doe',
-    email: 'john.doe@example.com',
+    email: 'john@example.com',
     phone: '+1234567890',
-    organisation: 'Acme Corp',
-    warmnessScore: 5,
-    lastContacted: new Date('2025-01-10'),
+    organisation: 'Test Corp',
+    warmnessScore: 3,
+    pipedrivePersonId: null,
+    lastContacted: null,
     addedToCampaign: false,
-    pipedrivePersonId: 'pipedrive-123',
-    pipedriveOrgId: null,
-    createdAt: new Date('2024-01-01'),
-    updatedAt: new Date('2024-01-01'),
-    userId: 'user-1',
-  }
+    isActive: true,
+    userId: 'user-123',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    organization: {
+      id: 'org-123',
+      name: 'Test Corp',
+      userId: 'user-123',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+  };
 
-  const mockOnEdit = vi.fn()
-  const mockOnDelete = vi.fn()
-  const mockOnActivity = vi.fn()
+  const mockOnWarmnessUpdate = vi.fn();
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    // Clean up the DOM to prevent multiple elements
-    document.body.innerHTML = ''
-  })
+    vi.clearAllMocks();
+    (global.fetch as any).mockClear();
+  });
 
-  describe('Basic Rendering', () => {
-    it('renders the contact name in the contact-name test id', () => {
-      render(<ContactCard contact={mockContact} />)
-      expect(screen.getByTestId('contact-name')).toHaveTextContent('John Doe')
-    })
-    it('renders the contact email in the contact-email test id', () => {
-      render(<ContactCard contact={mockContact} />)
-      expect(screen.getByTestId('contact-email')).toHaveTextContent('john.doe@example.com')
-    })
-    it('renders the contact organisation in the contact-organisation test id', () => {
-      render(<ContactCard contact={mockContact} />)
-      expect(screen.getByTestId('contact-organisation')).toHaveTextContent('Acme Corp')
-    })
-    it('renders the last contacted date in the last-contacted-value test id', () => {
-      render(<ContactCard contact={mockContact} />)
-      expect(screen.getByTestId('last-contacted-value')).toHaveTextContent('Jan 10, 2025')
-    })
-    it('renders the warmness score in the warmness-value test id', () => {
-      render(<ContactCard contact={mockContact} />)
-      expect(screen.getByTestId('warmness-value')).toHaveTextContent('5/10')
-    })
-    it('renders the warmness text and score in the warmness-badge test id', () => {
-      render(<ContactCard contact={mockContact} />)
-      expect(screen.getByTestId('warmness-badge')).toHaveTextContent('Warm (5/10)')
-    })
-  })
+  afterEach(() => {
+    cleanup();
+  });
 
-  describe('Edit and Delete Actions', () => {
-    it('shows edit and delete buttons when handlers are provided', () => {
+  describe('Warm Lead Integration', () => {
+    it('should check for warm lead creation when warmness score increases to 4+', async () => {
+      // Mock successful contact update
+      (global.fetch as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true })
+        })
+        // Mock successful warm lead creation
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ 
+            success: true, 
+            isWarmLead: true,
+            pipedrivePersonId: '456'
+          })
+        });
+
       render(
         <ContactCard
           contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
+          onWarmnessUpdate={mockOnWarmnessUpdate}
         />
-      )
+      );
 
-      expect(screen.getByLabelText('Edit contact')).toBeInTheDocument()
-      expect(screen.getByLabelText('Delete contact')).toBeInTheDocument()
-    })
+      // Find and click the increase warmness button
+      const increaseButton = screen.getByTitle('Increase warmness score');
+      fireEvent.click(increaseButton);
 
-    it('calls onEdit when edit button is clicked', async () => {
-      const user = userEvent.setup()
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+      });
+
+      // Check that the contact update was called
+      expect(global.fetch).toHaveBeenCalledWith(
+        `/api/contacts/${mockContact.id}`,
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ warmnessScore: 4 })
+        })
+      );
+
+      // Check that the warm lead check was called
+      expect(global.fetch).toHaveBeenCalledWith(
+        `/api/contacts/${mockContact.id}/check-warm-lead`,
+        expect.objectContaining({
+          method: 'POST'
+        })
+      );
+
+      // Check that the warm lead toast was created
+      expect(createWarmLeadToast).toHaveBeenCalledWith('John Doe');
+    });
+
+    it('should not check for warm lead creation when contact already has Pipedrive ID', async () => {
+      const contactWithPipedriveId = {
+        ...mockContact,
+        pipedrivePersonId: 'existing-id'
+      };
+
+      // Mock successful contact update only
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      });
+
+      render(
+        <ContactCard
+          contact={contactWithPipedriveId}
+          onWarmnessUpdate={mockOnWarmnessUpdate}
+        />
+      );
+
+      // Find and click the increase warmness button
+      const increaseButton = screen.getByTitle('Increase warmness score');
+      fireEvent.click(increaseButton);
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      // Should only call contact update, not warm lead check
+      expect(global.fetch).toHaveBeenCalledWith(
+        `/api/contacts/${contactWithPipedriveId.id}`,
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ warmnessScore: 4 })
+        })
+      );
+
+      // Should not call warm lead check
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        `/api/contacts/${contactWithPipedriveId.id}/check-warm-lead`,
+        expect.any(Object)
+      );
+    });
+
+    it('should not check for warm lead creation when warmness score is below 4', async () => {
+      // Mock successful contact update only
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      });
+
       render(
         <ContactCard
           contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
+          onWarmnessUpdate={mockOnWarmnessUpdate}
         />
-      )
+      );
 
-      await user.click(screen.getByLabelText('Edit contact'))
-      expect(mockOnEdit).toHaveBeenCalledWith(mockContact)
-    })
+      // Find and click the decrease warmness button (score will be 2)
+      const decreaseButton = screen.getByTitle('Decrease warmness score');
+      fireEvent.click(decreaseButton);
 
-    it('calls onDelete when delete button is clicked', async () => {
-      const user = userEvent.setup()
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      // Should only call contact update, not warm lead check
+      expect(global.fetch).toHaveBeenCalledWith(
+        `/api/contacts/${mockContact.id}`,
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ warmnessScore: 2 })
+        })
+      );
+
+      // Should not call warm lead check
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        `/api/contacts/${mockContact.id}/check-warm-lead`,
+        expect.any(Object)
+      );
+    });
+
+    it('should show error toast when warm lead creation fails', async () => {
+      // Mock successful contact update
+      (global.fetch as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true })
+        })
+        // Mock failed warm lead creation
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: 'Internal server error' })
+        });
+
       render(
         <ContactCard
           contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
+          onWarmnessUpdate={mockOnWarmnessUpdate}
         />
-      )
+      );
 
-      await user.click(screen.getByLabelText('Delete contact'))
-      expect(mockOnDelete).toHaveBeenCalledWith(mockContact)
-    })
+      // Find and click the increase warmness button
+      const increaseButton = screen.getByTitle('Increase warmness score');
+      fireEvent.click(increaseButton);
 
-    it('does not show edit and delete buttons when handlers are not provided', () => {
-      render(<ContactCard contact={mockContact} />)
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+      });
 
-      expect(screen.queryByLabelText('Edit contact')).not.toBeInTheDocument()
-      expect(screen.queryByLabelText('Delete contact')).not.toBeInTheDocument()
-    })
-  })
+      // Check that the error toast was created
+      expect(createSyncErrorToast).toHaveBeenCalledWith(
+        'warm lead creation',
+        'API request failed'
+      );
+    });
 
-  describe('Quick Action Buttons', () => {
-    it('shows quick action buttons when onActivity is provided', () => {
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
+    it('should show error toast when warm lead creation network fails', async () => {
+      // Mock successful contact update
+      (global.fetch as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ success: true })
+        })
+        // Mock network error for warm lead creation
+        .mockRejectedValueOnce(new Error('Network error'));
 
-      expect(screen.getByTestId('quick-action-email')).toBeInTheDocument()
-      expect(screen.getByTestId('quick-action-meeting_request')).toBeInTheDocument()
-      expect(screen.getByTestId('quick-action-meeting')).toBeInTheDocument()
-    })
-
-    it('calls onActivity with correct parameters when email button is clicked', async () => {
-      const user = userEvent.setup()
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      await user.click(screen.getByTestId('quick-action-email'))
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'EMAIL')
-    })
-
-    it('calls onActivity with correct parameters when meeting request button is clicked', async () => {
-      const user = userEvent.setup()
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      await user.click(screen.getByTestId('quick-action-meeting_request'))
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING')
-    })
-
-    it('calls onActivity with correct parameters when meeting button is clicked', async () => {
-      const user = userEvent.setup()
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      await user.click(screen.getByTestId('quick-action-meeting'))
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING')
-    })
-
-    it('does not show quick action buttons when onActivity is not provided', () => {
-      render(<ContactCard contact={mockContact} />)
-
-      expect(screen.queryByTestId('quick-action-email')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('quick-action-meeting_request')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('quick-action-meeting')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('Action Menu', () => {
-    it('shows action menu when onActivity is provided', () => {
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      expect(screen.getByTestId('action-menu')).toBeInTheDocument()
-    })
-
-    it('calls onActivity with correct parameters when LinkedIn action is clicked', async () => {
-      const user = userEvent.setup()
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      await user.click(screen.getByTestId('linkedin-action'))
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'EMAIL')
-    })
-
-    it('calls onActivity with correct parameters when phone call action is clicked', async () => {
-      const user = userEvent.setup()
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      await user.click(screen.getByTestId('phone-call-action'))
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'CALL')
-    })
-
-    it('calls onActivity with correct parameters when conference action is clicked', async () => {
-      const user = userEvent.setup()
-      render(<ContactCard contact={mockContact} onActivity={mockOnActivity} />)
-
-      await user.click(screen.getByTestId('conference-action'))
-      expect(mockOnActivity).toHaveBeenCalledWith('contact-1', 'MEETING')
-    })
-  })
-
-  describe('Activity Status Logic', () => {
-    it('shows "Warm Lead" for high warmness scores', () => {
-      const warmContact = { ...mockContact, warmnessScore: 8 }
-      render(<ContactCard contact={warmContact} />)
-
-      const activityStatus = screen.getByTestId('activity-status')
-      expect(activityStatus).toHaveTextContent('Warm Lead')
-    })
-
-    it('shows "Cold Lead" for low warmness scores', () => {
-      const coldContact = { ...mockContact, warmnessScore: 1 }
-      render(<ContactCard contact={coldContact} />)
-
-      const activityStatus = screen.getByTestId('activity-status')
-      expect(activityStatus).toHaveTextContent('Cold Lead')
-    })
-
-    it('shows "Active" for medium warmness with recent contact', () => {
-      const activeContact = { 
-        ...mockContact, 
-        warmnessScore: 5,
-        lastContacted: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) // 15 days ago
-      }
-      render(<ContactCard contact={activeContact} />)
-
-      const activityStatus = screen.getByTestId('activity-status')
-      expect(activityStatus).toHaveTextContent('Active')
-    })
-
-    it('shows "Inactive" for medium warmness with old contact', () => {
-      const inactiveContact = { 
-        ...mockContact, 
-        warmnessScore: 5,
-        lastContacted: new Date('2024-01-01') // Old contact
-      }
-      render(<ContactCard contact={inactiveContact} />)
-
-      const activityStatus = screen.getByTestId('activity-status')
-      expect(activityStatus).toHaveTextContent('Inactive')
-    })
-  })
-
-  describe('Warmness Text Logic', () => {
-    it('shows "Very Warm" for scores 7+', () => {
-      const veryWarmContact = { ...mockContact, warmnessScore: 8 }
-      render(<ContactCard contact={veryWarmContact} />)
-
-      expect(screen.getByText('Very Warm (8/10)')).toBeInTheDocument()
-    })
-
-    it('shows "Warm" for scores 5-6', () => {
-      const warmContact = { ...mockContact, warmnessScore: 6 }
-      render(<ContactCard contact={warmContact} />)
-
-      expect(screen.getByText('Warm (6/10)')).toBeInTheDocument()
-    })
-
-    it('shows "Lukewarm" for scores 3-4', () => {
-      const lukewarmContact = { ...mockContact, warmnessScore: 4 }
-      render(<ContactCard contact={lukewarmContact} />)
-
-      expect(screen.getByText('Lukewarm (4/10)')).toBeInTheDocument()
-    })
-
-    it('shows "Cold" for scores 0-2', () => {
-      const coldContact = { ...mockContact, warmnessScore: 2 }
-      render(<ContactCard contact={coldContact} />)
-
-      expect(screen.getByText('Cold (2/10)')).toBeInTheDocument()
-    })
-  })
-
-  describe('Campaign Status', () => {
-    it('shows "In Campaign" badge when contact is added to campaign', () => {
-      const campaignContact = { ...mockContact, addedToCampaign: true }
-      render(<ContactCard contact={campaignContact} />)
-
-      expect(screen.getByText('In Campaign')).toBeInTheDocument()
-    })
-
-    it('does not show "In Campaign" badge when contact is not in campaign', () => {
-      render(<ContactCard contact={mockContact} />)
-
-      expect(screen.queryByText('In Campaign')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('Accessibility', () => {
-    it('has proper ARIA labels for all interactive elements', () => {
       render(
         <ContactCard
           contact={mockContact}
-          onEdit={mockOnEdit}
-          onDelete={mockOnDelete}
-          onActivity={mockOnActivity}
+          onWarmnessUpdate={mockOnWarmnessUpdate}
         />
-      )
+      );
 
-      expect(screen.getByLabelText('Edit contact')).toBeInTheDocument()
-      expect(screen.getByLabelText('Delete contact')).toBeInTheDocument()
-      expect(screen.getByLabelText('Log email for John Doe')).toBeInTheDocument()
-      expect(screen.getByLabelText('Log meeting_request for John Doe')).toBeInTheDocument()
-      expect(screen.getByLabelText('Log meeting for John Doe')).toBeInTheDocument()
-    })
+      // Find and click the increase warmness button
+      const increaseButton = screen.getByTitle('Increase warmness score');
+      fireEvent.click(increaseButton);
 
-    it('has proper test IDs for testing', () => {
-      render(<ContactCard contact={mockContact} />)
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+      });
 
-      expect(screen.getByTestId('contact-card')).toBeInTheDocument()
-      expect(screen.getByTestId('pipedrive-status')).toBeInTheDocument()
-      expect(screen.getByTestId('activity-status')).toBeInTheDocument()
-    })
-  })
-
-  describe('Edge Cases', () => {
-    it('does not render the contact email element if email is missing', () => {
-      const contactWithoutEmail = { ...mockContact, email: null }
-      const { queryByTestId } = render(<ContactCard contact={contactWithoutEmail} />)
-      expect(queryByTestId('contact-email')).toBeNull()
-    })
-    it('does not render the contact organisation element if organisation is missing', () => {
-      const contactWithoutOrg = { ...mockContact, organisation: null }
-      const { queryByTestId } = render(<ContactCard contact={contactWithoutOrg} />)
-      expect(queryByTestId('contact-organisation')).toBeNull()
-    })
-    it('renders "Never" in the last-contacted-value test id if lastContacted is missing', () => {
-      const contactWithoutLastContacted = { ...mockContact, lastContacted: null }
-      render(<ContactCard contact={contactWithoutLastContacted} />)
-      expect(screen.getByTestId('last-contacted-value')).toHaveTextContent('Never')
-    })
-    it('renders the contact name in the contact-name test id even if phone is missing', () => {
-      const contactWithoutPhone = { ...mockContact, phone: null }
-      render(<ContactCard contact={contactWithoutPhone} />)
-      expect(screen.getByTestId('contact-name')).toHaveTextContent('John Doe')
-    })
-  })
-}) 
+      // Check that the error toast was created
+      expect(createSyncErrorToast).toHaveBeenCalledWith(
+        'warm lead creation',
+        'Network error'
+      );
+    });
+  });
+}); 

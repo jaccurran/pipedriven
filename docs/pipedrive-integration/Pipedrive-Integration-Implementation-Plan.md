@@ -833,7 +833,7 @@ export class ContactService {
 
 ### Day 1-2: Activity Replication Service
 
-#### 4.1 Write Tests First
+#### 4.1 Write Tests First (Following TDD)
 ```typescript
 // __tests__/server/services/activityReplicationService.test.ts
 describe('ActivityReplicationService', () => {
@@ -1176,7 +1176,464 @@ export async function GET(
 }
 ```
 
-## Phase 5: Error Handling & Polish (Week 5)
+## Phase 5: Record Updates (Week 5)
+
+### Day 1-2: Update Service Implementation
+
+#### 5.1 Write Tests First (Following TDD)
+```typescript
+// __tests__/server/services/pipedriveUpdateService.test.ts
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { PipedriveUpdateService } from '@/server/services/pipedriveUpdateService';
+import { createMockUpdateResult, createMockContact } from '@/__tests__/utils/testDataFactories';
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    contact: {
+      update: vi.fn(),
+      findUnique: vi.fn()
+    },
+    activity: {
+      update: vi.fn(),
+      findUnique: vi.fn()
+    }
+  }
+}));
+
+describe('PipedriveUpdateService', () => {
+  let service: PipedriveUpdateService;
+  let mockPipedriveService: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPipedriveService = {
+      updatePerson: vi.fn(),
+      updateActivity: vi.fn(),
+      updateOrganization: vi.fn(),
+      updateDeal: vi.fn()
+    };
+    service = new PipedriveUpdateService(mockPipedriveService);
+  });
+
+  describe('updatePerson', () => {
+    it('should update person in Pipedrive', async () => {
+      const updateData = {
+        name: 'Updated Name',
+        email: ['updated@example.com']
+      };
+
+      const mockResult = createMockUpdateResult();
+      mockPipedriveService.updatePerson.mockResolvedValue(mockResult);
+
+      const result = await service.updatePerson('person-123', updateData);
+
+      expect(result.success).toBe(true);
+      expect(mockPipedriveService.updatePerson).toHaveBeenCalledWith(
+        'person-123',
+        updateData
+      );
+    });
+
+    it('should handle update conflicts', async () => {
+      const updateData = { name: 'Updated Name' };
+      
+      mockPipedriveService.updatePerson.mockRejectedValue(
+        new Error('Conflict: Record modified by another user')
+      );
+
+      const result = await service.updatePerson('person-123', updateData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Conflict');
+      expect(result.retryCount).toBe(1);
+    });
+  });
+
+  describe('batchUpdate', () => {
+    it('should process multiple updates', async () => {
+      const updates = [
+        { recordType: 'activity', recordId: 'act-1', data: { subject: 'Update 1' } },
+        { recordType: 'person', recordId: 'person-1', data: { name: 'Update 2' } }
+      ];
+
+      mockPipedriveService.updateActivity.mockResolvedValue(createMockUpdateResult());
+      mockPipedriveService.updatePerson.mockResolvedValue(createMockUpdateResult());
+
+      const result = await service.batchUpdate(updates);
+
+      expect(result.success).toBe(true);
+      expect(result.summary.total).toBe(2);
+      expect(result.summary.successful).toBe(2);
+    });
+
+    it('should handle partial failures in batch', async () => {
+      const updates = [
+        { recordType: 'activity', recordId: 'act-1', data: { subject: 'Update 1' } },
+        { recordType: 'person', recordId: 'person-1', data: { name: 'Update 2' } }
+      ];
+
+      mockPipedriveService.updateActivity.mockResolvedValue(createMockUpdateResult());
+      mockPipedriveService.updatePerson.mockRejectedValue(new Error('API Error'));
+
+      const result = await service.batchUpdate(updates);
+
+      expect(result.success).toBe(false);
+      expect(result.summary.total).toBe(2);
+      expect(result.summary.successful).toBe(1);
+      expect(result.summary.failed).toBe(1);
+    });
+  });
+});
+```
+
+#### 5.2 Implement Update Service
+```typescript
+// server/services/pipedriveUpdateService.ts
+import { prisma } from '@/lib/prisma';
+import { UpdateResult, BatchUpdateResult, UpdateActivityData, UpdatePersonData, UpdateOrganizationData, UpdateDealData } from '@/types/pipedrive';
+
+export class PipedriveUpdateService {
+  constructor(private pipedriveService: PipedriveService) {}
+
+  async updateActivity(activityId: string, data: UpdateActivityData): Promise<UpdateResult> {
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await this.pipedriveService.updateActivity(activityId, data);
+        
+        if (result.success) {
+          // Update local activity sync status
+          await prisma.activity.update({
+            where: { id: activityId },
+            data: {
+              lastPipedriveUpdate: new Date(),
+              updateSyncStatus: 'SYNCED'
+            }
+          });
+
+          return {
+            success: true,
+            recordId: activityId,
+            timestamp: new Date(),
+            retryCount: attempt - 1
+          };
+        }
+
+        throw new Error(result.error || 'Failed to update activity');
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Update sync status on failure
+        await prisma.activity.update({
+          where: { id: activityId },
+          data: {
+            lastPipedriveUpdate: new Date(),
+            updateSyncStatus: attempt === maxRetries ? 'FAILED' : 'PENDING'
+          }
+        });
+
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+    }
+
+    return {
+      success: false,
+      error: lastError?.message || 'Unknown error',
+      timestamp: new Date(),
+      retryCount: maxRetries
+    };
+  }
+
+  async updatePerson(personId: string, data: UpdatePersonData): Promise<UpdateResult> {
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await this.pipedriveService.updatePerson(personId, data);
+        
+        if (result.success) {
+          // Update local contact sync status
+          await prisma.contact.update({
+            where: { pipedrivePersonId: personId },
+            data: {
+              lastPipedriveUpdate: new Date(),
+              updateSyncStatus: 'SYNCED'
+            }
+          });
+
+          return {
+            success: true,
+            recordId: personId,
+            timestamp: new Date(),
+            retryCount: attempt - 1
+          };
+        }
+
+        throw new Error(result.error || 'Failed to update person');
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Update sync status on failure
+        await prisma.contact.update({
+          where: { pipedrivePersonId: personId },
+          data: {
+            lastPipedriveUpdate: new Date(),
+            updateSyncStatus: attempt === maxRetries ? 'FAILED' : 'PENDING'
+          }
+        });
+
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+    }
+
+    return {
+      success: false,
+      error: lastError?.message || 'Unknown error',
+      timestamp: new Date(),
+      retryCount: maxRetries
+    };
+  }
+
+  async batchUpdate(updates: BatchUpdateRequest[]): Promise<BatchUpdateResult> {
+    const results: UpdateResult[] = [];
+    const errors: string[] = [];
+
+    // Process updates in parallel with rate limiting
+    const batchSize = 10;
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const batch = updates.slice(i, i + batchSize);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(update => this.processUpdate(update))
+      );
+
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+          if (!result.value.success) {
+            errors.push(result.value.error || 'Unknown error');
+          }
+        } else {
+          results.push({
+            success: false,
+            error: result.reason?.message || 'Unknown error',
+            timestamp: new Date(),
+            retryCount: 0
+          });
+          errors.push(result.reason?.message || 'Unknown error');
+        }
+      });
+
+      // Rate limiting delay between batches
+      if (i + batchSize < updates.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    const successful = results.filter(r => r.success).length;
+    const failed = results.length - successful;
+
+    return {
+      success: failed === 0,
+      results,
+      summary: {
+        total: results.length,
+        successful,
+        failed,
+        errors
+      }
+    };
+  }
+
+  private async processUpdate(update: BatchUpdateRequest): Promise<UpdateResult> {
+    switch (update.recordType) {
+      case 'activity':
+        return this.updateActivity(update.recordId, update.data);
+      case 'person':
+        return this.updatePerson(update.recordId, update.data);
+      case 'organization':
+        return this.updateOrganization(update.recordId, update.data);
+      case 'deal':
+        return this.updateDeal(update.recordId, update.data);
+      default:
+        throw new Error(`Unsupported record type: ${update.recordType}`);
+    }
+  }
+}
+```
+
+### Day 3-4: API Endpoints for Updates
+
+#### 5.3 Write Tests First
+```typescript
+// __tests__/app/api/pipedrive/people/[id]/route.test.ts
+describe('/api/pipedrive/people/[id]', () => {
+  it('should update person in Pipedrive', async () => {
+    const updateData = {
+      name: 'Updated Name',
+      email: ['updated@example.com']
+    };
+
+    vi.mocked(PipedriveUpdateService.prototype.updatePerson).mockResolvedValue({
+      success: true,
+      recordId: 'person-123',
+      timestamp: new Date(),
+      retryCount: 0
+    });
+
+    const response = await request(app)
+      .put('/api/pipedrive/people/person-123')
+      .set('Authorization', `Bearer ${mockToken}`)
+      .send(updateData);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      recordId: 'person-123'
+    });
+  });
+
+  it('should handle update conflicts', async () => {
+    const updateData = { name: 'Updated Name' };
+
+    vi.mocked(PipedriveUpdateService.prototype.updatePerson).mockResolvedValue({
+      success: false,
+      error: 'Conflict: Record modified by another user',
+      timestamp: new Date(),
+      retryCount: 3
+    });
+
+    const response = await request(app)
+      .put('/api/pipedrive/people/person-123')
+      .set('Authorization', `Bearer ${mockToken}`)
+      .send(updateData);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain('Conflict');
+  });
+});
+```
+
+#### 5.4 Implement API Endpoints
+```typescript
+// app/api/pipedrive/people/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/auth';
+import { PipedriveUpdateService } from '@/server/services/pipedriveUpdateService';
+import { createPipedriveService } from '@/server/services/pipedriveService';
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const personId = params.id;
+    const updateData = await request.json();
+
+    // Create Pipedrive service
+    const pipedriveService = await createPipedriveService(session.user.id);
+    if (!pipedriveService) {
+      return NextResponse.json(
+        { error: 'Pipedrive not configured' },
+        { status: 400 }
+      );
+    }
+
+    // Create update service
+    const updateService = new PipedriveUpdateService(pipedriveService);
+
+    // Update person
+    const result = await updateService.updatePerson(personId, updateData);
+
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        recordId: result.recordId
+      });
+    } else {
+      const statusCode = result.error?.includes('Conflict') ? 409 : 500;
+      return NextResponse.json(
+        { error: result.error },
+        { status: statusCode }
+      );
+    }
+  } catch (error) {
+    console.error('Error updating person:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Day 5: Integration with Contact Updates
+
+#### 5.5 Update Contact Service
+```typescript
+// server/services/contactService.ts
+export class ContactService {
+  constructor(
+    private warmLeadService?: WarmLeadService,
+    private updateService?: PipedriveUpdateService
+  ) {}
+
+  async updateContact(id: string, data: UpdateContactData, userId: string): Promise<Contact> {
+    const contact = await prisma.contact.update({
+      where: { id, userId },
+      data
+    });
+
+    // Check if contact became a warm lead
+    if (data.warmnessScore && data.warmnessScore >= 4 && this.warmLeadService) {
+      try {
+        await this.warmLeadService.checkAndCreateWarmLead({
+          contactId: id,
+          userId,
+          warmnessScore: data.warmnessScore
+        });
+      } catch (error) {
+        console.error('Failed to create warm lead:', error);
+        // Don't fail the contact update for warm lead creation failure
+      }
+    }
+
+    // Update in Pipedrive if contact has Pipedrive ID
+    if (contact.pipedrivePersonId && this.updateService) {
+      try {
+        const updateData: UpdatePersonData = {};
+        
+        if (data.name) updateData.name = data.name;
+        if (data.email) updateData.email = [data.email];
+        if (data.phone) updateData.phone = [data.phone];
+
+        if (Object.keys(updateData).length > 0) {
+          await this.updateService.updatePerson(contact.pipedrivePersonId, updateData);
+        }
+      } catch (error) {
+        console.error('Failed to update contact in Pipedrive:', error);
+        // Don't fail the contact update for Pipedrive sync failure
+      }
+    }
+
+    return contact;
+  }
+}
+```
+
+## Phase 6: Error Handling & Polish (Week 6)
 
 ### Day 1-2: Toast Notifications
 
@@ -1342,27 +1799,73 @@ test.describe('Pipedrive Integration E2E', () => {
     // Check for success message
     await expect(page.locator('text=Activity logged successfully')).toBeVisible();
   });
+
+  test('should update Pipedrive records', async ({ page }) => {
+    // Login and navigate to a contact with Pipedrive ID
+    await page.goto('/contacts/contact-with-pipedrive-id');
+    
+    // Edit contact details
+    await page.click('[data-testid="edit-contact-button"]');
+    await page.fill('[data-testid="contact-name"]', 'Updated Name');
+    await page.click('[data-testid="save-contact-button"]');
+    
+    // Check for sync status update
+    await expect(page.locator('text=Contact updated in Pipedrive')).toBeVisible();
+  });
+
+  test('should handle batch updates', async ({ page }) => {
+    // Login and navigate to batch operations
+    await page.goto('/admin/batch-operations');
+    
+    // Select multiple contacts for update
+    await page.click('[data-testid="select-contact-1"]');
+    await page.click('[data-testid="select-contact-2"]');
+    
+    // Choose update operation
+    await page.selectOption('[data-testid="batch-operation"]', 'update-labels');
+    await page.fill('[data-testid="label-input"]', 'VIP');
+    
+    // Execute batch update
+    await page.click('[data-testid="execute-batch"]');
+    
+    // Check for batch completion
+    await expect(page.locator('text=Batch update completed')).toBeVisible();
+  });
 });
 ```
 
 ## Testing Strategy
 
+### Testing Philosophy Integration
+
+Following our established testing strategy from `TESTING_STRATEGY.md`, all Pipedrive integration features will be tested using:
+
+- **TDD Approach**: Write failing tests first, implement minimal code to pass, then refactor
+- **Business Behavior Focus**: Test what the system should do, not implementation details
+- **Realistic Mocking**: Mock exactly what the code uses with complete, realistic test data
+- **Comprehensive Coverage**: Unit (80%), Integration (15%), E2E (5%) test distribution
+
 ### Unit Tests Coverage
-- **WarmLeadService**: 100% coverage
-- **ActivityReplicationService**: 100% coverage
-- **PipedriveUserService**: 100% coverage
-- **PipedriveLabelService**: 100% coverage
-- **PipedriveOrganizationService**: 100% coverage
+- **WarmLeadService**: 100% coverage with complete mock data structures
+- **ActivityReplicationService**: 100% coverage with retry logic testing
+- **PipedriveUserService**: 100% coverage with error scenarios
+- **PipedriveLabelService**: 100% coverage with label creation/retrieval
+- **PipedriveOrganizationService**: 100% coverage with organization management
+- **PipedriveUpdateService**: 100% coverage with update operations and conflict resolution
 
 ### Integration Tests
 - API endpoints with mocked Pipedrive responses
 - Service interactions with real database
 - Error handling scenarios
+- Rate limiting compliance
+- Batch operations testing
 
 ### E2E Tests
 - Complete warm lead creation workflow
 - Activity replication workflow
+- Record update workflows
 - Error handling and user feedback
+- Sync status verification
 
 ### Mock Strategy
 ```typescript
@@ -1382,10 +1885,62 @@ export class PipedriveMockManager {
     this.mockResponses.set(`org:${name}`, org);
   }
 
+  setUpdateResponse(recordType: string, recordId: string, result: UpdateResult) {
+    this.mockResponses.set(`update:${recordType}:${recordId}`, result);
+  }
+
+  setBatchUpdateResponse(results: BatchUpdateResult) {
+    this.mockResponses.set('batch-update', results);
+  }
+
   getMockResponse(key: string) {
     return this.mockResponses.get(key);
   }
+
+  // Reset all mocks between tests
+  reset() {
+    this.mockResponses.clear();
+  }
 }
+```
+
+### Test Data Factories
+```typescript
+// __tests__/utils/testDataFactories.ts
+export const createMockContact = (overrides = {}) => ({
+  id: 'contact-123',
+  name: 'John Doe',
+  email: 'john@example.com',
+  phone: '+1234567890',
+  warmnessScore: 5,
+  pipedrivePersonId: null,
+  organization: {
+    id: 'org-123',
+    name: 'Test Corp',
+    pipedriveOrgId: null
+  },
+  ...overrides
+});
+
+export const createMockActivity = (overrides = {}) => ({
+  id: 'activity-123',
+  type: 'EMAIL',
+  subject: 'Follow up email',
+  note: 'Important follow up',
+  dueDate: new Date('2025-12-25T10:00:00Z'),
+  contact: {
+    pipedrivePersonId: '123'
+  },
+  ...overrides
+});
+
+export const createMockUpdateResult = (overrides = {}) => ({
+  success: true,
+  recordId: 'record-123',
+  timestamp: new Date(),
+  retryCount: 0,
+  ...overrides
+});
 ```
 
 ## Risk Mitigation
@@ -1395,17 +1950,27 @@ export class PipedriveMockManager {
 2. **Rate Limiting**: Implement exponential backoff and request queuing
 3. **Data Consistency**: Use transactions for critical operations
 4. **Error Propagation**: Comprehensive error handling and logging
+5. **Update Conflicts**: Implement conflict resolution strategies
 
 ### Business Risks
 1. **User Experience**: Non-blocking operations with clear feedback
 2. **Data Loss**: Robust retry mechanisms and backup strategies
 3. **Performance**: Efficient API usage and caching where appropriate
+4. **Data Synchronization**: Handle concurrent modifications gracefully
 
 ### Testing Risks
 1. **Flaky Tests**: Use stable mocks and proper test isolation
 2. **Coverage Gaps**: Comprehensive test coverage with edge cases
 3. **Integration Issues**: Thorough integration testing with real scenarios
+4. **Mock Complexity**: Maintain realistic mock data structures
+
+### Testing Strategy Compliance
+1. **TDD Adherence**: All features follow Red-Green-Refactor cycle
+2. **Mock Accuracy**: Mocks match real component interfaces exactly
+3. **Test Data Quality**: Complete, realistic test data for all scenarios
+4. **Performance**: Tests complete within acceptable timeframes
+5. **Coverage Goals**: 80% unit, 15% integration, 5% E2E test distribution
 
 ---
 
-*This implementation plan provides a structured approach to building robust Pipedrive integration features while maintaining code quality and user experience.* 
+*This implementation plan provides a structured approach to building robust Pipedrive integration features while maintaining code quality, comprehensive test coverage, and excellent user experience.* 

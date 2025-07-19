@@ -60,7 +60,7 @@ export async function POST() {
         if (result.success && result.activityId) {
           await prisma.activity.update({
             where: { id: activity.id },
-            data: { pipedriveActivityId: result.activityId.toString() },
+            data: { pipedriveActivityId: result.activityId },
           })
         }
         

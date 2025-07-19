@@ -228,6 +228,9 @@ export async function POST(request: NextRequest) {
               totalContacts: 0 // Will be updated when we know the total
             }
           })
+          
+          // Add a small delay to ensure the progress bar is visible before starting API calls
+          await new Promise(resolve => setTimeout(resolve, 100))
         }
 
         if (effectiveSyncType === 'FULL') {
@@ -373,9 +376,19 @@ async function performFullSync(pipedriveService: PipedriveService, userId: strin
       where: { id: syncId },
       data: { 
         totalContacts: pipedriveContacts.length,
-        status: 'PENDING' // Ensure status is set to trigger progress bar
+        status: 'PENDING', // Ensure status is set to trigger progress bar
+        contactsProcessed: 0,
+        contactsCreated: 0,
+        contactsUpdated: 0,
+        contactsFailed: 0
       }
     })
+    
+    // Add a longer delay to ensure the progress bar is visible before any processing starts
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    // Send an immediate progress event to trigger the progress bar
+    console.log(`[SYNC] Starting sync with ${pipedriveContacts.length} contacts`)
   }
 
   // If no contacts to sync, return empty result (this is valid)
@@ -602,14 +615,21 @@ async function mapPipedriveContact(
               // The custom fields are stored as properties with hashed keys
               const orgData = org as unknown as Record<string, unknown>; // Type assertion to access dynamic properties
               
-              // Known custom field keys from the debug logs
-              const sectorFieldKey = '0333b4d1dc8f3e971d51197989327cdf50e21961'; // Sector field key
-              const countryFieldKey = 'c388fe9ef3ec06109a3bcd215f965dc4f35690a3'; // Country field key  
-              const sizeFieldKey = '4cd70be402c43c55b3fde83d05becf624852344c'; // Size field key
+              // Get dynamic field mappings from Pipedrive
+              const fieldMappings = await pipedriveService.getFieldMappings()
+              const sectorFieldKey = fieldMappings.sectorFieldKey
+              const countryFieldKey = fieldMappings.countryFieldKey
+              const sizeFieldKey = fieldMappings.sizeFieldKey
+              
+              console.log(`Organization ${org.name} - Using field mappings:`, {
+                sectorFieldKey,
+                countryFieldKey,
+                sizeFieldKey
+              })
 
               // Extract sector value
               let sectorName: string | null = null;
-              const sectorValue = orgData[sectorFieldKey];
+              const sectorValue = sectorFieldKey ? orgData[sectorFieldKey] : undefined;
               if (sectorValue && typeof sectorValue === 'string') {
                 const sectorId = parseInt(sectorValue);
                 if (!isNaN(sectorId)) {
@@ -630,7 +650,7 @@ async function mapPipedriveContact(
 
               // Extract country value
               let countryName: string | null = null;
-              const countryValue = orgData[countryFieldKey];
+              const countryValue = countryFieldKey ? orgData[countryFieldKey] : undefined;
               if (countryValue && typeof countryValue === 'string') {
                 const countryId = parseInt(countryValue);
                 if (!isNaN(countryId)) {
@@ -651,7 +671,7 @@ async function mapPipedriveContact(
 
               // Extract size value
               let sizeName: string | null = null;
-              const sizeValue = orgData[sizeFieldKey];
+              const sizeValue = sizeFieldKey ? orgData[sizeFieldKey] : undefined;
               if (sizeValue && typeof sizeValue === 'string') {
                 const sizeId = parseInt(sizeValue);
                 if (!isNaN(sizeId)) {
@@ -673,11 +693,11 @@ async function mapPipedriveContact(
               // Debug logging to see what values we're getting
               console.log(`Organization ${org.name} - Raw custom field data:`, {
                 sectorKey: sectorFieldKey,
-                sectorValue: orgData[sectorFieldKey],
+                sectorValue: sectorFieldKey ? orgData[sectorFieldKey] : undefined,
                 countryKey: countryFieldKey,
-                countryValue: orgData[countryFieldKey],
+                countryValue: countryFieldKey ? orgData[countryFieldKey] : undefined,
                 sizeKey: sizeFieldKey,
-                sizeValue: orgData[sizeFieldKey]
+                sizeValue: sizeFieldKey ? orgData[sizeFieldKey] : undefined
               });
 
               // Create organization with full details
@@ -703,7 +723,7 @@ async function mapPipedriveContact(
               // If we can't fetch organization details, create with basic info from contact
               console.log(`Failed to fetch organization details for ID ${orgId}, creating with basic info`);
               const basicOrg = await OrganizationService.findOrCreateOrganization({
-                name: pipedriveContact.org_name || 'Unknown Organization',
+                name: (pipedriveContact as Record<string, unknown>).org_name as string || 'Unknown Organization',
                 pipedriveOrgId: orgId,
                 address: undefined
               });
@@ -716,7 +736,7 @@ async function mapPipedriveContact(
           } else {
             // No pipedriveService available, create with basic info
                           const basicOrg = await OrganizationService.findOrCreateOrganization({
-                name: pipedriveContact.org_name || 'Unknown Organization',
+                name: (pipedriveContact as Record<string, unknown>).org_name as string || 'Unknown Organization',
                 pipedriveOrgId: orgId,
                 address: undefined
               });
@@ -729,7 +749,7 @@ async function mapPipedriveContact(
           // Fallback: create organization with basic info from contact
           try {
             const fallbackOrg = await OrganizationService.findOrCreateOrganization({
-              name: pipedriveContact.org_name || 'Unknown Organization',
+              name: (pipedriveContact as Record<string, unknown>).org_name as string || 'Unknown Organization',
               pipedriveOrgId: orgId,
               address: undefined
             });

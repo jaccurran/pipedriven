@@ -60,7 +60,7 @@ export function CampaignsContent({ user }: CampaignsContentProps) {
   return (
     <CampaignList 
       campaigns={campaigns} 
-      user={user as { id: string; name: string; email: string; role: 'CONSULTANT' | 'GOLDEN_TICKET'; pipedriveApiKey: string | null; lastSyncTimestamp: Date | null; syncStatus: string; createdAt: Date; updatedAt: Date; emailVerified: Date | null; image: string | null }} 
+      user={user as { id: string; name: string; email: string; role: 'CONSULTANT' | 'GOLDEN_TICKET'; pipedriveApiKey: string | null; pipedriveUserId: number | null; lastSyncTimestamp: Date | null; syncStatus: string; createdAt: Date; updatedAt: Date; emailVerified: Date | null; image: string | null; quickActionMode: 'SIMPLE' | 'DETAILED'; emailNotifications: boolean; activityReminders: boolean; campaignUpdates: boolean; syncStatusAlerts: boolean }} 
     />
   );
 } 

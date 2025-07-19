@@ -21,6 +21,9 @@ import { ActionMenu, type SecondaryActionType } from '@/components/actions/Actio
 import { QuickActionToggle } from '@/components/ui/QuickActionToggle'
 import { type User } from '@prisma/client'
 import { SyncProgressBar } from '@/components/contacts/SyncProgressBar'
+import { DeactivateConfirmationModal } from '@/components/contacts/DeactivateConfirmationModal'
+import { ReactivateConfirmationModal } from '@/components/contacts/ReactivateConfirmationModal'
+import { useContactActions } from '@/hooks/useContactActions'
 
 interface PaginationInfo {
   page: number
@@ -50,7 +53,8 @@ interface My500ClientProps {
 export function My500Client({ 
   initialContacts, 
   initialPagination, 
-  initialSyncStatus
+  initialSyncStatus,
+  user
 }: My500ClientProps) {
 
   const { data: session } = useSession()
@@ -119,12 +123,13 @@ export function My500Client({
   // UI state
   const [selectedContact, setSelectedContact] = useState<ContactWithActivities | null>(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
-  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING'>('EMAIL')
+  const [activityType, setActivityType] = useState<'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST' | 'LINKEDIN' | 'REFERRAL' | 'CONFERENCE'>('EMAIL')
+  const [selectedNote, setSelectedNote] = useState<string>('')
   const [campaigns] = useState<Array<{ id: string; name: string }>>([])
 
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
-  const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE')
+  const [quickActionMode, setQuickActionMode] = useState<'SIMPLE' | 'DETAILED'>(user.quickActionMode || 'SIMPLE')
   
   // Loading states from React Query
   const isSyncing = syncMutation.isPending
@@ -132,6 +137,19 @@ export function My500Client({
   // Add state for sync progress bar
   const [syncId, setSyncId] = useState<string | null>(null)
   const [showProgressBar, setShowProgressBar] = useState(false)
+
+  // Add state for deactivate/reactivate modals
+  const [deactivateModalOpen, setDeactivateModalOpen] = useState(false)
+  const [reactivateModalOpen, setReactivateModalOpen] = useState(false)
+  const [actionContact, setActionContact] = useState<ContactWithActivities | null>(null)
+
+  // Use the custom hook
+  const {
+    isDeactivating,
+    isReactivating,
+    deactivateContact,
+    reactivateContact,
+  } = useContactActions()
 
   // Utility function to check if contact was recently contacted
   const isRecentlyContacted = useCallback((contact: ContactWithActivities): boolean => {
@@ -274,9 +292,9 @@ export function My500Client({
     if (quickActionMode === 'SIMPLE') {
       // Simple mode: direct logging
       try {
-        const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
+        const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST'> = {
           EMAIL: 'EMAIL',
-          MEETING_REQUEST: 'MEETING',
+          MEETING_REQUEST: 'MEETING_REQUEST', // Fixed: Meeting requests should be MEETING_REQUEST type
           MEETING: 'MEETING'
         }
         const activityType = activityTypeMap[type]
@@ -306,9 +324,9 @@ export function My500Client({
     } else {
       // Detailed mode: show modal
       setSelectedContact(contact)
-      const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
+      const activityTypeMap: Record<ActionType, 'EMAIL' | 'CALL' | 'MEETING' | 'MEETING_REQUEST'> = {
         EMAIL: 'EMAIL',
-        MEETING_REQUEST: 'MEETING',
+        MEETING_REQUEST: 'MEETING_REQUEST', // Fixed: Meeting requests should be MEETING_REQUEST type
         MEETING: 'MEETING'
       }
       setActivityType(activityTypeMap[type])
@@ -323,17 +341,74 @@ export function My500Client({
     }
   }, [quickActionMode])
 
-  const handleSecondaryAction = useCallback(async (type: SecondaryActionType) => {
-    if (!selectedContact) return
+  // Handler for ActionMenu
+  const handleSecondaryAction = useCallback(async (actionType: SecondaryActionType, contact: ContactWithActivities, note?: string) => {
+    console.log('handleSecondaryAction called:', actionType, contact.name)
     
-    const activityTypeMap: Record<SecondaryActionType, 'EMAIL' | 'CALL' | 'MEETING'> = {
-      LINKEDIN: 'EMAIL',
-      PHONE_CALL: 'CALL',
-      CONFERENCE: 'MEETING'
+    if (actionType === 'REMOVE_AS_ACTIVE') {
+      console.log('REMOVE_AS_ACTIVE action triggered for:', contact.name, 'isActive:', contact.isActive)
+      if (contact.isActive) {
+        setActionContact(contact)
+        setDeactivateModalOpen(true)
+      } else {
+        setActionContact(contact)
+        setReactivateModalOpen(true)
+      }
+    } else {
+      // Handle activity-based secondary actions
+      if (quickActionMode === 'SIMPLE') {
+        // Simple mode: direct logging
+        try {
+          const activityTypeMap: Record<SecondaryActionType, 'EMAIL' | 'CALL' | 'MEETING' | 'LINKEDIN' | 'CONFERENCE'> = {
+            LINKEDIN: 'LINKEDIN',
+            PHONE_CALL: 'CALL',
+            CONFERENCE: 'CONFERENCE',
+            REMOVE_AS_ACTIVE: 'EMAIL' // This won't be used but needed for type completeness
+          }
+          const activityType = activityTypeMap[actionType]
+          
+          const response = await fetch('/api/activities', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              type: activityType,
+              contactId: contact.id,
+              subject: `${activityType} with ${contact.name}`,
+              note: note || `Activity logged: ${actionType}`,
+            }),
+          })
+
+          if (response.ok) {
+            setSuccessMessage(`Activity "${actionType}" logged successfully for ${contact.name}`)
+            setShowSuccessMessage(true)
+            setTimeout(() => setShowSuccessMessage(false), 3000)
+          } else {
+            console.error('Failed to log activity:', await response.text())
+          }
+        } catch (error) {
+          console.error('Failed to log activity:', error)
+        }
+      } else {
+        // Detailed mode: show modal
+        setSelectedContact(contact)
+        const activityTypeMap: Record<SecondaryActionType, 'EMAIL' | 'CALL' | 'MEETING' | 'LINKEDIN' | 'CONFERENCE'> = {
+          LINKEDIN: 'LINKEDIN',
+          PHONE_CALL: 'CALL',
+          CONFERENCE: 'CONFERENCE',
+          REMOVE_AS_ACTIVE: 'EMAIL' // This won't be used but needed for type completeness
+        }
+        setActivityType(activityTypeMap[actionType])
+        setSelectedNote(note || '')
+        setShowActivityModal(true)
+        
+        // For test integration
+        if (typeof window !== 'undefined') {
+          (window as unknown as Record<string, unknown>).__modalShown = true
+        }
+      }
     }
-    setActivityType(activityTypeMap[type])
-    setShowActivityModal(true)
-  }, [selectedContact])
+  }, [quickActionMode])
 
   const handleActivitySubmit = useCallback(async (activityData: {
     type: string;
@@ -381,8 +456,35 @@ export function My500Client({
     setSelectedContact(null)
   }, [])
 
-
-
+  // Confirm handlers
+  const handleDeactivateConfirm = async (options: { reason?: string; removeFromSystem?: boolean }) => {
+    if (!actionContact) return
+    try {
+      await deactivateContact(actionContact.id, options)
+      setDeactivateModalOpen(false)
+      setActionContact(null)
+      setShowSuccessMessage(true)
+      setSuccessMessage(`${actionContact.name} marked as inactive.`)
+      // Optionally refresh contacts here
+    } catch (error) {
+      setShowSuccessMessage(true)
+      setSuccessMessage(`Failed to deactivate: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+  const handleReactivateConfirm = async (options: { reason?: string }) => {
+    if (!actionContact) return
+    try {
+      await reactivateContact(actionContact.id, options)
+      setReactivateModalOpen(false)
+      setActionContact(null)
+      setShowSuccessMessage(true)
+      setSuccessMessage(`${actionContact.name} reactivated.`)
+      // Optionally refresh contacts here
+    } catch (error) {
+      setShowSuccessMessage(true)
+      setSuccessMessage(`Failed to reactivate: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
 
 
   return (
@@ -653,8 +755,17 @@ export function My500Client({
                         />
                         <div className="flex justify-center sm:justify-start">
                           <ActionMenu
-                            onAction={handleSecondaryAction}
+                            onAction={(type, note) => handleSecondaryAction(type, contact, note)}
+                            onDeactivate={() => {
+                              setActionContact(contact)
+                              setDeactivateModalOpen(true)
+                            }}
+                            onReactivate={() => {
+                              setActionContact(contact)
+                              setReactivateModalOpen(true)
+                            }}
                             contactName={contact.name}
+                            contactIsActive={contact.isActive}
                           />
                         </div>
                       </div>
@@ -739,9 +850,10 @@ export function My500Client({
             onSubmit={handleActivitySubmit}
             onCancel={handleActivityCancel}
             initialData={{
-              type: activityType,
-              subject: `${activityType} with ${selectedContact.name}`,
+              type: activityType === 'MEETING_REQUEST' ? 'MEETING' : activityType,
+              subject: `${activityType === 'MEETING_REQUEST' ? 'Meeting Request' : activityType} with ${selectedContact.name}`,
               contactId: selectedContact.id,
+              note: selectedNote,
             }}
           />
         )}
@@ -756,6 +868,20 @@ export function My500Client({
           <span>{successMessage}</span>
         </div>
       )}
+      <DeactivateConfirmationModal
+        contact={actionContact || undefined}
+        isOpen={deactivateModalOpen}
+        onConfirm={handleDeactivateConfirm}
+        onCancel={() => { setDeactivateModalOpen(false); setActionContact(null) }}
+        isLoading={isDeactivating}
+      />
+      <ReactivateConfirmationModal
+        contact={actionContact || undefined}
+        isOpen={reactivateModalOpen}
+        onConfirm={handleReactivateConfirm}
+        onCancel={() => { setReactivateModalOpen(false); setActionContact(null) }}
+        isLoading={isReactivating}
+      />
     </div>
   )
 } 

@@ -20,6 +20,11 @@ export default async function ActivitiesPage() {
       name: true,
       email: true,
       role: true,
+      quickActionMode: true,
+      emailNotifications: true,
+      activityReminders: true,
+      campaignUpdates: true,
+      syncStatusAlerts: true,
     },
   })
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/auth'
 import { CampaignService } from '@/server/services/campaignService'
+import { ShortcodeService } from '@/server/services/shortcodeService'
 import { z } from 'zod'
 
 const campaignSchema = z.object({
@@ -64,7 +65,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 })
     }
     const campaignService = new CampaignService()
+    const shortcodeService = new ShortcodeService()
     try {
+      // Generate shortcode for the campaign
+      const shortcode = await shortcodeService.generateShortcode(name)
+      
       // Only pass defined fields
       const createData: {
         name: string;
@@ -76,7 +81,12 @@ export async function POST(request: NextRequest) {
         budget?: number;
         startDate?: Date;
         endDate?: Date;
-      } = { name, status: status as 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' }
+        shortcode: string;
+      } = { 
+        name, 
+        status: status as 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED',
+        shortcode
+      }
       if (description !== undefined) createData.description = description
       if (sector !== undefined) createData.sector = sector
       if (theme !== undefined) createData.theme = theme

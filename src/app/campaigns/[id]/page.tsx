@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { CampaignContactsWrapper } from '@/components/campaigns/CampaignContactsWrapper'
+import { ShortcodeBadge } from '@/components/ui/ShortcodeBadge'
 
 interface CampaignDetailPageProps {
   params: Promise<{
@@ -26,6 +27,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
       email: true,
       role: true,
       pipedriveApiKey: true,
+      pipedriveUserId: true,
       createdAt: true,
       updatedAt: true,
       emailVerified: true,
@@ -33,6 +35,11 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
       lastSyncTimestamp: true,
       syncStatus: true,
       password: true,
+      quickActionMode: true,
+      emailNotifications: true,
+      activityReminders: true,
+      campaignUpdates: true,
+      syncStatusAlerts: true,
     },
   })
 
@@ -80,7 +87,18 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{campaign.name}</h1>
+            <div className="flex items-center gap-3 mb-2">
+              {campaign.shortcode && (
+                <ShortcodeBadge
+                  shortcode={campaign.shortcode}
+                  campaignName={campaign.name}
+                  showCopyButton={true}
+                  size="md"
+                  variant="default"
+                />
+              )}
+              <h1 className="text-2xl font-bold text-gray-900">{campaign.name}</h1>
+            </div>
             <p className="text-gray-600">Campaign details and performance</p>
           </div>
         </div>
@@ -92,6 +110,22 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
           </div>
           <div className="px-6 py-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-medium text-gray-500">Shortcode</h3>
+                <div className="mt-1">
+                  {campaign.shortcode ? (
+                    <ShortcodeBadge
+                      shortcode={campaign.shortcode}
+                      campaignName={campaign.name}
+                      showCopyButton={true}
+                      size="sm"
+                      variant="outline"
+                    />
+                  ) : (
+                    <span className="text-sm text-gray-400">Not assigned</span>
+                  )}
+                </div>
+              </div>
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Description</h3>
                 <p className="mt-1 text-sm text-gray-900">{campaign.description}</p>

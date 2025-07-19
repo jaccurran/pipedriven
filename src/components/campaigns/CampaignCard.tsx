@@ -3,6 +3,7 @@
 import React from 'react'
 import { Campaign } from '@prisma/client'
 import { Card } from '@/components/ui'
+import { ShortcodeBadge } from '@/components/ui/ShortcodeBadge'
 import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
 import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
 import { cn } from '@/lib/utils'
@@ -87,9 +88,20 @@ export function CampaignCard({
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-gray-900 truncate">
-              {campaign.name}
-            </h3>
+            <div className="flex items-center gap-2 mb-1">
+              {campaign.shortcode && (
+                <ShortcodeBadge
+                  shortcode={campaign.shortcode}
+                  campaignName={campaign.name}
+                  showCopyButton={true}
+                  size="sm"
+                  variant="default"
+                />
+              )}
+              <h3 className="text-sm font-medium text-gray-900 truncate">
+                {campaign.name}
+              </h3>
+            </div>
             {campaign.description && (
               <p className="text-xs text-gray-600 mt-1 line-clamp-2">
                 {campaign.description}

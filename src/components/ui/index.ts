@@ -20,6 +20,8 @@ export { ErrorBoundary } from './ErrorBoundary';
 export { LazyLoad } from './LazyLoad';
 export { VirtualList } from './VirtualList';
 export { Breadcrumb } from './Breadcrumb';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
+export { Label } from './Label';
 
 // Layout Components
 export { DashboardLayout } from '../layout/DashboardLayout';

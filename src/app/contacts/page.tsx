@@ -132,6 +132,7 @@ export default function ContactsPage() {
     email: session.user.email || '',
     role: session.user.role as UserRole || 'USER',
     pipedriveApiKey: session.user.pipedriveApiKey || null,
+    pipedriveUserId: null, // This will be null for session user
     createdAt: new Date(),
     updatedAt: new Date(),
     emailVerified: null,
@@ -139,6 +140,11 @@ export default function ContactsPage() {
     lastSyncTimestamp: null,
     syncStatus: 'IDLE',
     syncId: '',
+    quickActionMode: 'SIMPLE' as const,
+    emailNotifications: true,
+    activityReminders: true,
+    campaignUpdates: true,
+    syncStatusAlerts: true,
   }
 
   // Extract contacts from the API response

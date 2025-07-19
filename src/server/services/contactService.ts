@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import type { Contact, Activity, Campaign, ActivityType, User, Prisma } from '@prisma/client'
+import { createPipedriveService } from './pipedriveService'
 
 export interface CreateContactData {
   name: string
@@ -42,6 +43,39 @@ export interface UpdateContactData {
   pipedriveOrgId?: string
 }
 
+export interface DeactivateOptions {
+  reason?: string
+  removeFromSystem?: boolean
+  syncToPipedrive?: boolean
+}
+
+export interface ReactivateOptions {
+  reason?: string
+  syncToPipedrive?: boolean
+}
+
+export interface DeactivateResult {
+  success: boolean
+  data?: {
+    contactId: string
+    pipedriveUpdated: boolean
+    localUpdated: boolean
+    activityId?: string
+  }
+  error?: string
+}
+
+export interface ReactivateResult {
+  success: boolean
+  data?: {
+    contactId: string
+    pipedriveUpdated: boolean
+    localUpdated: boolean
+    activityId?: string
+  }
+  error?: string
+}
+
 export interface GetContactsOptions {
   page?: number
   limit?: number
@@ -58,6 +92,7 @@ export interface GetContactsOptions {
   sortOrder?: 'asc' | 'desc'
   country?: string // Filter by organization country
   sector?: string // Filter by organization industry/sector
+  isActive?: boolean // Filter by active status
 }
 
 export interface PaginationInfo {
@@ -124,7 +159,8 @@ export class ContactService {
       sortBy = 'createdAt',
       sortOrder = 'desc',
       country,
-      sector
+      sector,
+      isActive = true // Default to active contacts only
     } = options
     
     const skip = (page - 1) * limit
@@ -133,6 +169,11 @@ export class ContactService {
     
     if (userId) {
       where.userId = userId
+    }
+    
+    // Filter by active status
+    if (isActive !== undefined) {
+      where.isActive = isActive
     }
     
     // Handle search query
@@ -268,21 +309,29 @@ export class ContactService {
   }
 
   async getContactAnalytics(contactId: string): Promise<ContactAnalytics> {
-    const [activities, contact] = await Promise.all([
+    const [contact, activities] = await Promise.all([
+      prisma.contact.findUnique({
+        where: { id: contactId },
+        include: {
+          activities: true,
+          campaigns: true,
+        },
+      }),
       prisma.activity.findMany({
         where: { contactId },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.contact.findUnique({
-        where: { id: contactId },
-        include: { campaigns: true },
-      }),
     ])
 
+    if (!contact) {
+      throw new Error('Contact not found')
+    }
+
     const activityBreakdown: Record<ActivityType, number> = {
-      EMAIL: 0,
       CALL: 0,
+      EMAIL: 0,
       MEETING: 0,
+      MEETING_REQUEST: 0,
       LINKEDIN: 0,
       REFERRAL: 0,
       CONFERENCE: 0,
@@ -293,37 +342,38 @@ export class ContactService {
     })
 
     const lastActivityDate = activities.length > 0 ? activities[0].createdAt : null
-    const averageWarmnessScore = contact?.warmnessScore || 0
-    const campaignsCount = contact?.campaigns.length || 0
 
     return {
       totalActivities: activities.length,
       activityBreakdown,
       lastActivityDate,
-      averageWarmnessScore,
-      campaignsCount,
+      averageWarmnessScore: contact.warmnessScore,
+      campaignsCount: contact.campaigns.length,
     }
   }
 
   async searchContacts(options: SearchContactsOptions = {}): Promise<GetContactsResult> {
     const { 
-      query,
-      minWarmnessScore,
-      maxWarmnessScore,
-      addedToCampaign,
-      page = 1,
+      query, 
+      sector, 
+      minWarmnessScore, 
+      maxWarmnessScore, 
+      addedToCampaign, 
+      page = 1, 
       limit = 10,
-      userId
+      userId 
     } = options
-    
+
     const skip = (page - 1) * limit
 
-    const where: Prisma.ContactWhereInput = {}
-    
+    const where: Prisma.ContactWhereInput = {
+      isActive: true, // Only search active contacts
+    }
+
     if (userId) {
       where.userId = userId
     }
-    
+
     if (query) {
       where.OR = [
         { name: { contains: query, mode: 'insensitive' } },
@@ -331,19 +381,23 @@ export class ContactService {
         { organisation: { contains: query, mode: 'insensitive' } },
       ]
     }
-    
-    if (minWarmnessScore !== undefined) {
-      where.warmnessScore = { gte: minWarmnessScore }
-    }
-    
-    if (maxWarmnessScore !== undefined) {
-      if (where.warmnessScore && typeof where.warmnessScore === 'object') {
-        where.warmnessScore.lte = maxWarmnessScore
-      } else {
-        where.warmnessScore = { lte: maxWarmnessScore }
+
+    if (sector) {
+      where.organization = {
+        industry: { contains: sector, mode: 'insensitive' }
       }
     }
-    
+
+    if (minWarmnessScore !== undefined || maxWarmnessScore !== undefined) {
+      where.warmnessScore = {}
+      if (minWarmnessScore !== undefined) {
+        where.warmnessScore.gte = minWarmnessScore
+      }
+      if (maxWarmnessScore !== undefined) {
+        where.warmnessScore.lte = maxWarmnessScore
+      }
+    }
+
     if (addedToCampaign !== undefined) {
       where.addedToCampaign = addedToCampaign
     }
@@ -370,42 +424,273 @@ export class ContactService {
   }
 
   async getContactPerformance(contactId: string): Promise<ContactPerformance> {
-    const activities = await prisma.activity.findMany({
-      where: { contactId },
-      orderBy: { createdAt: 'desc' },
-    })
-
     const now = new Date()
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-    const activitiesThisWeek = activities.filter(activity => 
-      activity.createdAt >= oneWeekAgo
+    const [activities, contact] = await Promise.all([
+      prisma.activity.findMany({
+        where: { contactId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.contact.findUnique({
+        where: { id: contactId },
+      }),
+    ])
+
+    if (!contact) {
+      throw new Error('Contact not found')
+    }
+
+    const activitiesThisMonth = activities.filter(
+      activity => activity.createdAt >= startOfMonth
     ).length
 
-    const activitiesThisMonth = activities.filter(activity => 
-      activity.createdAt >= oneMonthAgo
+    const activitiesThisWeek = activities.filter(
+      activity => activity.createdAt >= startOfWeek
     ).length
 
     const lastActivityType = activities.length > 0 ? activities[0].type : null
 
     // Calculate engagement score based on activity frequency and recency
-    let engagementScore = 0
-    if (activities.length > 0) {
-      const daysSinceLastActivity = Math.floor(
-        (now.getTime() - activities[0].createdAt.getTime()) / (24 * 60 * 60 * 1000)
-      )
-      engagementScore = Math.max(0, 100 - daysSinceLastActivity * 2 + activitiesThisMonth * 5)
-    }
+    const daysSinceLastActivity = activities.length > 0 
+      ? Math.floor((now.getTime() - activities[0].createdAt.getTime()) / (1000 * 60 * 60 * 24))
+      : Infinity
+
+    const engagementScore = Math.max(0, 100 - (daysSinceLastActivity * 2) + (activities.length * 5))
 
     return {
       totalActivities: activities.length,
       activitiesThisMonth,
       activitiesThisWeek,
-      responseRate: 0, // Would need to track responses separately
-      averageResponseTime: 0, // Would need to track response times separately
+      responseRate: 0, // Would need to track responses
+      averageResponseTime: 0, // Would need to track response times
       lastActivityType,
-      engagementScore,
+      engagementScore: Math.min(100, Math.max(0, engagementScore)),
+    }
+  }
+
+  async deactivateContact(
+    contactId: string, 
+    userId: string, 
+    options: DeactivateOptions = {}
+  ): Promise<DeactivateResult> {
+    const { reason = 'Removed by user via My-500', removeFromSystem = false, syncToPipedrive = true } = options
+
+    try {
+      // 1. Validate contact exists and user has permission
+      const contact = await prisma.contact.findFirst({
+        where: {
+          id: contactId,
+          userId: userId
+        }
+      })
+
+      if (!contact) {
+        return {
+          success: false,
+          error: 'Contact not found'
+        }
+      }
+
+      // 2. Check if contact can be deactivated
+      if (!contact.isActive) {
+        return {
+          success: false,
+          error: 'Contact is already inactive'
+        }
+      }
+
+      // 3. Check for pending activities (activities with future due dates)
+      const pendingActivities = await prisma.activity.findMany({
+        where: {
+          contactId: contactId,
+          dueDate: {
+            gte: new Date()
+          }
+        }
+      })
+
+      if (pendingActivities.length > 0) {
+        return {
+          success: false,
+          error: 'Cannot deactivate contact with pending activities'
+        }
+      }
+
+      // 4. Update Pipedrive if requested and contact has Pipedrive ID
+      let pipedriveUpdated = false
+      if (syncToPipedrive && contact.pipedrivePersonId) {
+        const pipedriveService = await createPipedriveService(userId)
+        
+        if (!pipedriveService) {
+          return {
+            success: false,
+            error: 'Failed to create Pipedrive service - check API key configuration'
+          }
+        }
+
+        const pipedriveResult = await pipedriveService.deactivateContact(
+          parseInt(contact.pipedrivePersonId)
+        )
+        
+        if (!pipedriveResult.success) {
+          return {
+            success: false,
+            error: `Failed to update Pipedrive: ${pipedriveResult.error}`
+          }
+        }
+        
+        pipedriveUpdated = true
+      }
+
+      // 5. Update local contact
+      const updateData: Prisma.ContactUpdateInput = {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivatedBy: userId,
+        deactivationReason: reason
+      }
+
+      if (removeFromSystem) {
+        // Soft delete - mark as deleted (deletedAt field not in schema, using deactivatedAt instead)
+        updateData.deactivatedAt = new Date()
+      }
+
+      await prisma.contact.update({
+        where: { id: contactId },
+        data: updateData
+      })
+
+      // 6. Create system activity for audit
+      const activity = await prisma.activity.create({
+        data: {
+          type: 'EMAIL', // Use a generic type for system activities
+          subject: 'Contact Deactivated',
+          note: `Contact ${contact.name} was deactivated. Reason: ${reason}`,
+          userId: userId,
+          contactId: contactId,
+          isSystemActivity: true,
+          systemAction: 'DEACTIVATE'
+        }
+      })
+
+      return {
+        success: true,
+        data: {
+          contactId: contactId,
+          pipedriveUpdated,
+          localUpdated: true,
+          activityId: activity.id
+        }
+      }
+
+    } catch (error) {
+      console.error('Error deactivating contact:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to deactivate contact'
+      }
+    }
+  }
+
+  async reactivateContact(
+    contactId: string, 
+    userId: string, 
+    options: ReactivateOptions = {}
+  ): Promise<ReactivateResult> {
+    const { reason = 'Reactivated by user via My-500', syncToPipedrive = true } = options
+
+    try {
+      // 1. Validate contact exists and user has permission
+      const contact = await prisma.contact.findFirst({
+        where: {
+          id: contactId,
+          userId: userId
+        }
+      })
+
+      if (!contact) {
+        return {
+          success: false,
+          error: 'Contact not found'
+        }
+      }
+
+      // 2. Check if contact can be reactivated
+      if (contact.isActive) {
+        return {
+          success: false,
+          error: 'Contact is already active'
+        }
+      }
+
+      // 3. Update Pipedrive if requested and contact has Pipedrive ID
+      let pipedriveUpdated = false
+      if (syncToPipedrive && contact.pipedrivePersonId) {
+        const pipedriveService = await createPipedriveService(userId)
+        
+        if (!pipedriveService) {
+          return {
+            success: false,
+            error: 'Failed to create Pipedrive service - check API key configuration'
+          }
+        }
+
+        const pipedriveResult = await pipedriveService.reactivateContact(
+          parseInt(contact.pipedrivePersonId)
+        )
+        
+        if (!pipedriveResult.success) {
+          return {
+            success: false,
+            error: `Failed to update Pipedrive: ${pipedriveResult.error}`
+          }
+        }
+        
+        pipedriveUpdated = true
+      }
+
+      // 4. Update local contact
+      await prisma.contact.update({
+        where: { id: contactId },
+        data: {
+          isActive: true,
+          deactivatedAt: null,
+          deactivatedBy: null,
+          deactivationReason: null
+        }
+      })
+
+      // 5. Create system activity for audit
+      const activity = await prisma.activity.create({
+        data: {
+          type: 'EMAIL', // Use a generic type for system activities
+          subject: 'Contact Reactivated',
+          note: `Contact ${contact.name} was reactivated. Reason: ${reason}`,
+          userId: userId,
+          contactId: contactId,
+          isSystemActivity: true,
+          systemAction: 'REACTIVATE'
+        }
+      })
+
+      return {
+        success: true,
+        data: {
+          contactId: contactId,
+          pipedriveUpdated,
+          localUpdated: true,
+          activityId: activity.id
+        }
+      }
+
+    } catch (error) {
+      console.error('Error reactivating contact:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reactivate contact'
+      }
     }
   }
 } 

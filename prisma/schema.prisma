@@ -14,8 +14,17 @@ model User {
   password          String?
   role              UserRole        @default(CONSULTANT)
   pipedriveApiKey   String?
+  pipedriveUserId   Int?            // Pipedrive user ID for owner assignment
   lastSyncTimestamp DateTime?
   syncStatus        String          @default("NOT_SYNCED")
+  
+  // User preferences
+  quickActionMode   QuickActionMode @default(SIMPLE)
+  emailNotifications Boolean        @default(true)
+  activityReminders  Boolean        @default(true)
+  campaignUpdates    Boolean        @default(true)
+  syncStatusAlerts   Boolean        @default(true)
+  
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   emailVerified     DateTime?
@@ -73,6 +82,7 @@ model VerificationToken {
 model Campaign {
   id          String         @id @default(cuid())
   name        String
+  shortcode   String?        @unique
   description String?
   status      CampaignStatus @default(PLANNED)
   sector      String?
@@ -91,23 +101,25 @@ model Campaign {
 }
 
 model Organization {
-  id              String   @id @default(cuid())
-  name            String
-  normalizedName  String
-  pipedriveOrgId  String?  @unique
-  industry        String?
-  size            String?
-  website         String?
-  address         String?
-  country         String?
-  city            String?
-  contactCount    Int      @default(0)
-  lastActivity    DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  name                String
+  normalizedName      String
+  pipedriveOrgId      String?  @unique
+  lastPipedriveUpdate DateTime? // Last update timestamp
+  updateSyncStatus    String    @default("SYNCED") // SYNCED, PENDING, FAILED
+  industry            String?
+  size                String?
+  website             String?
+  address             String?
+  country             String?
+  city                String?
+  contactCount        Int      @default(0)
+  lastActivity        DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   // Relations
-  contacts        Contact[]
+  contacts            Contact[]
 
   @@map("organizations")
 }
@@ -125,6 +137,7 @@ model Contact {
   pipedrivePersonId    String?
   pipedriveOrgId       String?
   lastPipedriveUpdate  DateTime?
+  updateSyncStatus     String        @default("SYNCED") // SYNCED, PENDING, FAILED
   
   // New Pipedrive fields from initial API response
   lastActivityDate     DateTime?     // last_activity_date from Pipedrive
@@ -139,6 +152,12 @@ model Contact {
   followersCount       Int           @default(0)
   jobTitle             String?
   
+  // Deactivation fields
+  isActive             Boolean       @default(true)
+  deactivatedAt        DateTime?
+  deactivatedBy        String?
+  deactivationReason   String?
+  
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   userId               String
@@ -151,20 +170,30 @@ model Contact {
 }
 
 model Activity {
-  id                   String       @id @default(cuid())
-  type                 ActivityType
-  subject              String?
-  note                 String?
-  dueDate              DateTime?
-  pipedriveActivityId  String?      // Add this field for Pipedrive sync
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
-  userId               String
-  contactId            String?
-  campaignId           String?
-  campaign             Campaign?    @relation(fields: [campaignId], references: [id])
-  contact              Contact?     @relation(fields: [contactId], references: [id])
-  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                       String       @id @default(cuid())
+  type                     ActivityType
+  subject                  String?
+  note                     String?
+  dueDate                  DateTime?
+  pipedriveActivityId      Int?         // Pipedrive activity ID
+  replicatedToPipedrive    Boolean      @default(false) // Sync status
+  pipedriveSyncAttempts    Int          @default(0) // Retry counter
+  lastPipedriveSyncAttempt DateTime?    // Last attempt timestamp
+  lastPipedriveUpdate      DateTime?    // Last update timestamp
+  updateSyncStatus         String       @default("SYNCED") // SYNCED, PENDING, FAILED
+  
+  // System activity fields for audit trail
+  isSystemActivity         Boolean      @default(false)
+  systemAction             String?
+  
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+  userId                   String
+  contactId                String?
+  campaignId               String?
+  campaign                 Campaign?    @relation(fields: [campaignId], references: [id])
+  contact                  Contact?     @relation(fields: [contactId], references: [id])
+  user                     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("activities")
 }
@@ -220,6 +249,7 @@ enum ActivityType {
   CALL
   EMAIL
   MEETING
+  MEETING_REQUEST
   LINKEDIN
   REFERRAL
   CONFERENCE
@@ -230,4 +260,9 @@ enum SyncStatus {
   SUCCESS
   FAILED
   RETRY
+}
+
+enum QuickActionMode {
+  SIMPLE
+  DETAILED
 }

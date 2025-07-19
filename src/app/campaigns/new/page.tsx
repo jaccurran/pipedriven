@@ -20,12 +20,18 @@ export default async function NewCampaignPage() {
       email: true,
       role: true,
       pipedriveApiKey: true,
+      pipedriveUserId: true,
       createdAt: true,
       updatedAt: true,
       emailVerified: true,
       image: true,
       lastSyncTimestamp: true,
       syncStatus: true,
+      quickActionMode: true,
+      emailNotifications: true,
+      activityReminders: true,
+      campaignUpdates: true,
+      syncStatusAlerts: true,
     },
   })
 

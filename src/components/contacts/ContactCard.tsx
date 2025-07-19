@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 import { QuickActionButton, type ActionType } from '@/components/actions/QuickActionButton'
 import { ActionMenu, type SecondaryActionType } from '@/components/actions/ActionMenu'
+import { createWarmLeadToast, createSyncErrorToast, usePipedriveToastContext } from '@/components/ui/PipedriveToast'
 
 interface ContactWithOrganization extends Contact {
   organization?: Organization | null
@@ -16,8 +17,10 @@ interface ContactCardProps {
   contact: ContactWithOrganization
   onEdit?: (contact: ContactWithOrganization) => void
   onDelete?: (contact: ContactWithOrganization) => void
-  onActivity?: (contactId: string, activityType: string) => void
+  onActivity?: (contactId: string, activityType: string, note?: string) => void
   onWarmnessUpdate?: (contactId: string, newScore: number) => void
+  onDeactivate?: (contact: ContactWithOrganization) => void
+  onReactivate?: (contact: ContactWithOrganization) => void
   className?: string
 }
 
@@ -27,8 +30,12 @@ export function ContactCard({
   onDelete,
   onActivity,
   onWarmnessUpdate,
+  onDeactivate,
+  onReactivate,
   className = '',
 }: ContactCardProps) {
+  const { addToast } = usePipedriveToastContext();
+  
   const formatDate = (date: Date | string | null | undefined) => {
     if (!date) return 'Never'
     const d = new Date(date)
@@ -115,22 +122,23 @@ export function ContactCard({
       // Map ActionType to activity type
       const activityTypeMap: Record<ActionType, string> = {
         EMAIL: 'EMAIL',
-        MEETING_REQUEST: 'MEETING',
+        MEETING_REQUEST: 'MEETING_REQUEST', // Fixed: Meeting requests should be MEETING_REQUEST type
         MEETING: 'MEETING'
       }
       onActivity(contact.id, activityTypeMap[type])
     }
   }
 
-  const handleSecondaryAction = (type: SecondaryActionType) => {
+  const handleSecondaryAction = (type: SecondaryActionType, note?: string) => {
     if (onActivity) {
       // Map SecondaryActionType to activity type
       const activityTypeMap: Record<SecondaryActionType, string> = {
-        LINKEDIN: 'EMAIL', // LinkedIn activities as email type for now
-        PHONE_CALL: 'CALL',
-        CONFERENCE: 'MEETING'
+        LINKEDIN: 'LINKEDIN', // Fixed: LinkedIn activities should be LINKEDIN type
+        PHONE_CALL: 'CALL', // Fixed: Phone call should be CALL type
+        CONFERENCE: 'CONFERENCE', // Fixed: Conference should be CONFERENCE type
+        REMOVE_AS_ACTIVE: 'REMOVE_AS_ACTIVE' // Fixed: Remove as active action
       }
-      onActivity(contact.id, activityTypeMap[type])
+      onActivity(contact.id, activityTypeMap[type], note)
     }
   }
 
@@ -154,6 +162,33 @@ export function ContactCard({
       })
 
       if (response.ok) {
+        // Check if contact became a warm lead
+        if (newScore >= 4 && !contact.pipedrivePersonId) {
+          try {
+            const warmLeadResponse = await fetch(`/api/contacts/${contact.id}/check-warm-lead`, {
+              method: 'POST'
+            });
+            
+            if (warmLeadResponse.ok) {
+              const result = await warmLeadResponse.json();
+              if (result.isWarmLead) {
+                // Show success toast for warm lead creation
+                const toast = createWarmLeadToast(contact.name);
+                addToast(toast);
+              }
+            } else {
+              // Show warning toast for sync failure
+              const toast = createSyncErrorToast('warm lead creation', 'API request failed');
+              addToast(toast);
+            }
+          } catch (warmLeadError) {
+            // Show error toast for warm lead creation failure
+            console.error('Warm lead creation failed:', warmLeadError);
+            const toast = createSyncErrorToast('warm lead creation', 'Network error');
+            addToast(toast);
+          }
+        }
+        
         // Call the callback to notify parent component
         if (onWarmnessUpdate) {
           onWarmnessUpdate(contact.id, newScore)
@@ -374,7 +409,10 @@ export function ContactCard({
             <div className="flex justify-end">
               <ActionMenu
                 onAction={handleSecondaryAction}
+                onDeactivate={onDeactivate ? () => onDeactivate(contact) : undefined}
+                onReactivate={onReactivate ? () => onReactivate(contact) : undefined}
                 contactName={contact.name}
+                contactIsActive={contact.isActive}
               />
             </div>
           </div>

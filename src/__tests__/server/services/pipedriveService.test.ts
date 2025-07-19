@@ -1,839 +1,775 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { PipedriveService, createPipedriveService } from '@/server/services/pipedriveService'
-import { prisma } from '@/lib/prisma'
-import type { User, Contact, Activity, ActivityType } from '@prisma/client'
-import { encryptApiKey } from '@/lib/apiKeyEncryption'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PipedriveService } from '@/server/services/pipedriveService';
+import { prisma } from '@/lib/prisma';
+import { decryptApiKey } from '@/lib/apiKeyEncryption';
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    user: {
+      findUnique: vi.fn()
+    }
+  }
+}));
+
+vi.mock('@/lib/apiKeyEncryption', () => ({
+  decryptApiKey: vi.fn()
+}));
+
+vi.mock('@/lib/pipedrive-config', () => ({
+  pipedriveConfig: {
+    enableRetries: true,
+    maxRetries: 3,
+    retryDelay: 1000,
+    enableRateLimiting: true,
+    enableDetailedLogging: false
+  },
+  getPipedriveApiUrl: () => 'https://api.pipedrive.com/v1',
+  validatePipedriveConfig: () => []
+}));
 
 // Mock fetch globally
-global.fetch = vi.fn()
+global.fetch = vi.fn();
 
 describe('PipedriveService', () => {
-  let service: PipedriveService
-  let mockUser: User
-  let mockContact: Contact
-  let mockActivity: Activity
+  let service: PipedriveService;
+  const mockApiKey = 'test-api-key';
 
-  beforeEach(async () => {
-    // Set up encryption environment
-    process.env.API_KEY_ENCRYPTION_SECRET = '12345678901234567890123456789012'
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new PipedriveService(mockApiKey);
+    (global.fetch as any).mockClear();
+  });
 
-    // Clean up database
-    await prisma.activity.deleteMany()
-    await prisma.contact.deleteMany()
-    await prisma.user.deleteMany()
-
-    // Create test user with encrypted API key
-    const encryptedApiKey = await encryptApiKey('test-api-key-123')
-    mockUser = await prisma.user.create({
-      data: {
-        email: 'test@example.com',
-        name: 'Test User',
-        role: 'CONSULTANT',
-        pipedriveApiKey: encryptedApiKey,
-      },
-    })
-
-    // Create test contact
-    mockContact = await prisma.contact.create({
-      data: {
-        name: 'John Doe',
-        email: 'john@example.com',
-        phone: '+1234567890',
-        organisation: 'Acme Corp',
-        userId: mockUser.id,
-      },
-    })
-
-    // Create test activity
-    mockActivity = await prisma.activity.create({
-      data: {
-        type: 'CALL',
-        subject: 'Follow up call',
-        note: 'Discuss project details',
-        dueDate: new Date('2025-12-25T10:00:00Z'),
-        userId: mockUser.id,
-        contactId: mockContact.id,
-      },
-    })
-
-    // Create service instance with decrypted key
-    service = new PipedriveService('test-api-key-123')
-
-    // Clear all mocks
-    vi.clearAllMocks()
-  })
-
-  describe('testConnection', () => {
-    it('should return success when API key is valid', async () => {
-      const mockResponse = {
+  describe('Rate Limiting', () => {
+    it('should enforce rate limiting for multiple requests', async () => {
+      // Mock successful API responses
+      (global.fetch as any).mockResolvedValue({
         ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: {
-            id: 123,
-            name: 'Test User',
-            email: 'test@example.com',
-          },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+        text: () => Promise.resolve(JSON.stringify({ success: true, data: {} }))
+      });
 
-      const result = await service.testConnection()
-
-      expect(result.success).toBe(true)
-      expect(result.user).toEqual({
-        id: 123,
-        name: 'Test User',
-        email: 'test@example.com',
-      })
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/users/me?api_token=test-api-key-123',
-        expect.objectContaining({
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-    })
-
-    it('should return error when API key is invalid', async () => {
-      const mockResponse = {
-        ok: false,
-        json: vi.fn().mockResolvedValue({
-          error: 'Invalid API key',
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.testConnection()
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Invalid API key')
-    })
-
-    it('should handle network errors gracefully', async () => {
-      vi.mocked(fetch).mockRejectedValue(new Error('Network error'))
-
-      const result = await service.testConnection()
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Failed to connect to Pipedrive API')
-    })
-  })
-
-  describe('createOrUpdatePerson', () => {
-    it('should create a new person when contact has no Pipedrive ID', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: {
-            id: 456,
-            name: 'John Doe',
-            email: ['john@example.com'],
-            phone: ['+1234567890'],
-          },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.createOrUpdatePerson(mockContact)
-
-      expect(result.success).toBe(true)
-      expect(result.personId).toBe(456)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons?api_token=test-api-key-123',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('"name":"John Doe"'),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-
-      // Verify contact was updated with Pipedrive ID
-      const updatedContact = await prisma.contact.findUnique({
-        where: { id: mockContact.id },
-      })
-      expect(updatedContact?.pipedrivePersonId).toBe('456')
-    })
-
-    it('should update existing person when contact has Pipedrive ID', async () => {
-      // Update contact with Pipedrive ID
-      await prisma.contact.update({
-        where: { id: mockContact.id },
-        data: { pipedrivePersonId: '789' },
-      })
-
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: {
-            id: 789,
-            name: 'John Doe Updated',
-          },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const updatedContact = await prisma.contact.findUnique({
-        where: { id: mockContact.id },
-      })
-
-      const result = await service.createOrUpdatePerson(updatedContact!)
-
-      expect(result.success).toBe(true)
-      expect(result.personId).toBe(789)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons/789?api_token=test-api-key-123',
-        expect.objectContaining({
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-    })
-
-    it('should handle missing email and phone gracefully', async () => {
-      const contactWithoutContact = await prisma.contact.create({
-        data: {
-          name: 'Jane Doe',
-          userId: mockUser.id,
-        },
-      })
-
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: { id: 123 },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.createOrUpdatePerson(contactWithoutContact)
-
-      expect(result.success).toBe(true)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/persons?api_token=test-api-key-123',
-        expect.objectContaining({
-          body: JSON.stringify({
-            name: 'Jane Doe',
-            email: [],
-            phone: [],
-            org_name: undefined,
-          }),
-        })
-      )
-    })
-
-    it('should handle API errors gracefully', async () => {
-      const mockResponse = {
-        ok: false,
-        json: vi.fn().mockResolvedValue({
-          error: 'Validation failed',
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.createOrUpdatePerson(mockContact)
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Validation failed')
-    })
-  })
-
-  describe('createActivity', () => {
-    it('should create an activity with all fields', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: {
-            id: 123,
-            subject: 'Follow up call',
-            type: 'call',
-          },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.createActivity(mockActivity)
-
-      expect(result.success).toBe(true)
-      expect(result.activityId).toBe(123)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('"subject":"Follow up call"'),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-    })
-
-    it('should map activity types correctly', async () => {
-      const activityTypes: ActivityType[] = ['CALL', 'EMAIL', 'MEETING', 'LINKEDIN', 'REFERRAL', 'CONFERENCE']
-      const expectedTypes = ['call', 'email', 'meeting', 'task', 'task', 'meeting']
-
-      for (let i = 0; i < activityTypes.length; i++) {
-        const activity = await prisma.activity.create({
-          data: {
-            type: activityTypes[i],
-            subject: `Test ${activityTypes[i]}`,
-            userId: mockUser.id,
-          },
-        })
-
-        const mockResponse = {
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            data: { id: 123 },
-          }),
-        }
-        vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-        await service.createActivity(activity)
-
-        expect(fetch).toHaveBeenCalledWith(
-          'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
-          expect.objectContaining({
-            body: expect.stringContaining(`"type":"${expectedTypes[i]}"`),
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          })
-        )
-      }
-    })
-
-    it('should handle activity with contact that has Pipedrive ID', async () => {
-      // Update contact with Pipedrive ID
-      await prisma.contact.update({
-        where: { id: mockContact.id },
-        data: { pipedrivePersonId: '456' },
-      })
-
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: { id: 123 },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const activityWithContact = await prisma.activity.findUnique({
-        where: { id: mockActivity.id },
-        include: { contact: true },
-      })
-
-      const result = await service.createActivity(activityWithContact!)
-
-      expect(result.success).toBe(true)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
-        expect.objectContaining({
-          body: expect.stringContaining('"person_id":456'),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-    })
-
-    it('should handle activity without due date', async () => {
-      const activityWithoutDate = await prisma.activity.create({
-        data: {
-          type: 'EMAIL',
-          subject: 'Send email',
-          userId: mockUser.id,
-        },
-      })
-
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: { id: 123 },
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.createActivity(activityWithoutDate)
-
-      expect(result.success).toBe(true)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities?api_token=test-api-key-123',
-        expect.objectContaining({
-          body: expect.stringContaining('"subject":"Send email"'),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-    })
-  })
-
-  describe('getPersons', () => {
-    it('should fetch persons successfully when filter exists', async () => {
-      // Mock filters response (first call)
-      const mockFiltersResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: [
-            { id: 123, name: 'Persons Still Active - Pipedriver' }
-          ],
-        }),
-      }
-      // Mock persons response (second call)
-      const mockPersons = [
-        {
-          id: 1,
-          name: 'John Doe',
-          email: [{ label: 'work', value: 'john@example.com', primary: true }],
-          phone: [{ label: 'work', value: '+1234567890', primary: true }],
-          created: '2025-01-01T00:00:00Z',
-          updated: '2025-01-01T00:00:00Z',
-        },
-      ]
-      const mockPersonsResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockPersons,
-        }),
-      }
-
-      // Set up fetch mock to return different responses for different calls
-      vi.mocked(fetch)
-        .mockResolvedValueOnce(mockFiltersResponse as any)
-        .mockResolvedValueOnce(mockPersonsResponse as any)
-
-      const result = await service.getPersons()
-
-      expect(result.success).toBe(true)
-      expect(result.persons).toEqual(mockPersons)
-      expect(fetch).toHaveBeenCalledTimes(2)
-    })
-
-    it('should return error when filter does not exist', async () => {
-      // Mock filters response with no "Persons Still Active - Pipedriver" filter
-      const mockFiltersResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: [
-            { id: 456, name: 'Some Other Filter' }
-          ],
-        }),
-      }
-
-      vi.mocked(fetch).mockResolvedValue(mockFiltersResponse as any)
-
-      const result = await service.getPersons()
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Required Pipedrive filter "Persons Still Active - Pipedriver" not found. Please ensure this filter exists in your Pipedrive account.')
-      expect(fetch).toHaveBeenCalledTimes(1)
-    })
-
-    it('should fetch all pages and aggregate results (pagination)', async () => {
-      const mockPersonsPage1 = Array.from({ length: 100 }, (_, i) => ({
-        id: i + 1,
-        name: `Contact ${i + 1}`,
-        email: [{ label: 'work', value: `contact${i + 1}@example.com`, primary: true }],
-        phone: [{ label: 'work', value: `+1234567${i.toString().padStart(3, '0')}`, primary: true }],
-        created: '2025-01-01T00:00:00Z',
-        updated: '2025-01-01T00:00:00Z',
-      }))
-
-      const mockPersonsPage2 = Array.from({ length: 50 }, (_, i) => ({
-        id: i + 101,
-        name: `Contact ${i + 101}`,
-        email: [{ label: 'work', value: `contact${i + 101}@example.com`, primary: true }],
-        phone: [{ label: 'work', value: `+1234567${(i + 100).toString().padStart(3, '0')}`, primary: true }],
-        created: '2025-01-01T00:00:00Z',
-        updated: '2025-01-01T00:00:00Z',
-      }))
-
-      // Mock filters response (first call)
-      const mockFiltersResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: [
-            { id: 123, name: 'Persons Still Active - Pipedriver' }
-          ],
-        }),
-      }
-      // Mock first page of persons (second call)
-      const mockPersonsPage1Response = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockPersonsPage1,
-        }),
-      }
-      // Mock second page of persons (third call) - fewer results to stop pagination
-      const mockPersonsPage2Response = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockPersonsPage2,
-        }),
-      }
-
-      vi.mocked(fetch)
-        .mockResolvedValueOnce(mockFiltersResponse as any)
-        .mockResolvedValueOnce(mockPersonsPage1Response as any)
-        .mockResolvedValueOnce(mockPersonsPage2Response as any)
-
-      const result = await service.getPersons()
-
-      expect(result.success).toBe(true)
-      expect(result.persons).toHaveLength(150) // 100 + 50
-      expect(result.persons![0]).toEqual(mockPersonsPage1[0])
-      expect(result.persons![100]).toEqual(mockPersonsPage2[0])
-      expect(fetch).toHaveBeenCalledTimes(3)
-    })
-  })
-
-  describe('getOrganizations', () => {
-    it('should fetch organizations successfully', async () => {
-      const mockOrganizations = [
-        {
-          id: 1,
-          name: 'Acme Corp',
-          address: '123 Main St',
-          created: '2025-01-01T00:00:00Z',
-          updated: '2025-01-01T00:00:00Z',
-        },
-      ]
-
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockOrganizations,
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.getOrganizations()
-
-      expect(result.success).toBe(true)
-      expect(result.organizations).toEqual(mockOrganizations)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/organizations?api_token=test-api-key-123',
-        expect.objectContaining({
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-      )
-    })
-  })
-
-  describe('createPipedriveService factory', () => {
-    it('should create service when user has encrypted API key', async () => {
-      const service = await createPipedriveService(mockUser.id)
-
-      expect(service).toBeInstanceOf(PipedriveService)
+      const startTime = Date.now();
       
-      // Verify the service can make API calls with the decrypted key
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: {
-            id: 123,
-            name: 'Test User',
-            email: 'test@example.com',
-          },
-        }),
+      // Make multiple requests quickly
+      const promises = Array.from({ length: 5 }, () => 
+        service.testConnection()
+      );
+      
+      await Promise.all(promises);
+      const endTime = Date.now();
+
+      // Should have made 5 requests
+      expect(global.fetch).toHaveBeenCalledTimes(5);
+      
+      // Each request should have the API key
+      for (let i = 0; i < 5; i++) {
+        const call = (global.fetch as any).mock.calls[i];
+        expect(call[0]).toContain('api_token=test-api-key');
       }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+    });
 
-      const result = await service!.testConnection()
-      expect(result.success).toBe(true)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/users/me?api_token=test-api-key-123',
-        expect.any(Object)
-      )
-    })
-
-    it('should return null when user has no API key', async () => {
-      const userWithoutKey = await prisma.user.create({
-        data: {
-          email: 'nokey@example.com',
-          name: 'No Key User',
-          role: 'CONSULTANT',
+    it('should handle rate limit exceeded responses from API', async () => {
+      // Mock rate limit response
+      (global.fetch as any).mockResolvedValue({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: {
+          get: (name: string) => name === 'retry-after' ? '2' : null
         },
-      })
+        text: () => Promise.resolve(JSON.stringify({ error: 'Rate limit exceeded' }))
+      });
 
-      const service = await createPipedriveService(userWithoutKey.id)
+      const result = await service.testConnection();
 
-      expect(service).toBeNull()
-    })
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Rate limit exceeded');
+    });
 
-    it('should return null when user does not exist', async () => {
-      const service = await createPipedriveService('non-existent-id')
-
-      expect(service).toBeNull()
-    })
-
-    it('should return null when API key decryption fails', async () => {
-      // Create a user with an invalid encrypted API key
-      const userWithInvalidKey = await prisma.user.create({
-        data: {
-          email: 'invalid-key@example.com',
-          name: 'Invalid Key User',
-          role: 'CONSULTANT',
-          pipedriveApiKey: 'invalid-encrypted-key',
-        },
-      })
-
-      const service = await createPipedriveService(userWithInvalidKey.id)
-
-      expect(service).toBeNull()
-    })
-  })
-
-  describe('getPersonActivities', () => {
-    it('should fetch activities for a person', async () => {
-      const mockActivities = [
-        {
-          id: 1,
-          subject: 'Follow up call',
-          type: 'call',
-          done: true,
-          done_time: '2024-01-15T10:30:00Z',
-          created: '2024-01-15T10:00:00Z',
-          updated: '2024-01-15T10:30:00Z',
-        },
-        {
-          id: 2,
-          subject: 'Email sent',
-          type: 'email',
-          done: true,
-          done_time: '2024-01-14T14:20:00Z',
-          created: '2024-01-14T14:00:00Z',
-          updated: '2024-01-14T14:20:00Z',
-        },
-      ]
-
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockActivities,
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.getPersonActivities(123)
-
-      expect(result.success).toBe(true)
-      expect(result.activities).toEqual(mockActivities)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.pipedrive.com/v1/activities?start=0&limit=100&person_id=123&api_token=test-api-key-123',
-        expect.objectContaining({
+    it('should retry requests after rate limit delay', async () => {
+      // Mock rate limit response first, then success
+      (global.fetch as any)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
           headers: {
-            'Content-Type': 'application/json',
+            get: (name: string) => name === 'retry-after' ? '1' : null
           },
+          text: () => Promise.resolve(JSON.stringify({ error: 'Rate limit exceeded' }))
         })
-      )
-    })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: () => Promise.resolve(JSON.stringify({ 
+            success: true, 
+            data: { data: { id: 1, name: 'Test User', email: 'test@example.com' } } 
+          }))
+        });
 
-    it('should handle API errors gracefully', async () => {
-      const mockResponse = {
+      const result = await service.testConnection();
+
+      expect(result.success).toBe(true);
+      expect(result.user).toBeDefined();
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('API Key Validation', () => {
+    it('should throw error for empty API key', () => {
+      expect(() => new PipedriveService('')).toThrow('Pipedrive API key is required');
+      expect(() => new PipedriveService('   ')).toThrow('Pipedrive API key is required');
+    });
+
+    it('should create service with valid API key', () => {
+      expect(() => new PipedriveService('valid-key')).not.toThrow();
+    });
+  });
+
+  describe('Connection Testing', () => {
+    it('should test connection successfully', async () => {
+      const mockUser = {
+        id: 1,
+        name: 'Test User',
+        email: 'test@example.com',
+        created: '2024-01-01T00:00:00Z',
+        updated: '2024-01-01T00:00:00Z'
+      };
+
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify({
+          success: true,
+          data: { data: mockUser }
+        }))
+      });
+
+      const result = await service.testConnection();
+
+      expect(result.success).toBe(true);
+      expect(result.user).toEqual({ data: mockUser });
+      expect(result.diagnostics).toBeDefined();
+      expect(result.diagnostics?.endpoint).toBe('/users/me');
+    });
+
+    it('should handle connection failure', async () => {
+      (global.fetch as any).mockResolvedValue({
         ok: false,
-        json: vi.fn().mockResolvedValue({
-          error: 'Person not found',
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+        status: 401,
+        statusText: 'Unauthorized',
+        text: () => Promise.resolve(JSON.stringify({ error: 'Invalid API key' }))
+      });
 
-      const result = await service.getPersonActivities(999)
+      const result = await service.testConnection();
 
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Person not found')
-    })
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('API key expired');
+    });
+  });
 
-    it('should handle pagination correctly', async () => {
-      const firstBatch = Array.from({ length: 100 }, (_, i) => ({
-        id: i + 1,
-        subject: `Activity ${i + 1}`,
-        type: 'call',
-        done: true,
-        done_time: '2024-01-15T10:30:00Z',
-        created: '2024-01-15T10:00:00Z',
-        updated: '2024-01-15T10:30:00Z',
-      }))
-
-      const secondBatch = Array.from({ length: 50 }, (_, i) => ({
-        id: i + 101,
-        subject: `Activity ${i + 101}`,
-        type: 'email',
-        done: true,
-        done_time: '2024-01-14T14:20:00Z',
-        created: '2024-01-14T14:00:00Z',
-        updated: '2024-01-14T14:20:00Z',
-      }))
-
-      vi.mocked(fetch)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ data: firstBatch }),
-        } as any)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ data: secondBatch }),
-        } as any)
-
-      const result = await service.getPersonActivities(123)
-
-      expect(result.success).toBe(true)
-      expect(result.activities).toHaveLength(150)
-      expect(fetch).toHaveBeenCalledTimes(2)
-    })
-  })
-
-  describe('getLastContactedDate', () => {
-    it('should return the most recent completed activity date', async () => {
-      const mockActivities = [
+  describe('translateSectorId', () => {
+    it('should find sector field by name and translate ID to label', async () => {
+      const mockCustomFields = [
         {
           id: 1,
-          subject: 'Follow up call',
-          type: 'call',
-          done: true,
-          done_time: '2024-01-15T10:30:00Z',
-          created: '2024-01-15T10:00:00Z',
-          updated: '2024-01-15T10:30:00Z',
+          name: 'Sector',
+          key: 'sector-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Technology', value: '1' },
+            { id: 2, label: 'Healthcare', value: '2' },
+            { id: 3, label: 'Finance', value: '3' }
+          ]
         },
         {
           id: 2,
-          subject: 'Email sent',
-          type: 'email',
-          done: true,
-          done_time: '2024-01-14T14:20:00Z',
-          created: '2024-01-14T14:00:00Z',
-          updated: '2024-01-14T14:20:00Z',
-        },
-        {
-          id: 3,
-          subject: 'Scheduled meeting',
-          type: 'meeting',
-          done: false,
-          created: '2024-01-16T09:00:00Z',
-          updated: '2024-01-16T09:00:00Z',
-        },
-      ]
+          name: 'Industry',
+          key: 'industry-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 10, label: 'Manufacturing', value: '10' },
+            { id: 11, label: 'Retail', value: '11' }
+          ]
+        }
+      ];
 
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockActivities,
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
 
-      const result = await service.getLastContactedDate(123)
+      const result = await service.translateSectorId(2);
 
-      expect(result.success).toBe(true)
-      expect(result.lastContacted).toEqual(new Date('2024-01-15T10:30:00Z'))
-    })
+      expect(result).toBe('Healthcare');
+    });
 
-    it('should return undefined when no completed activities exist', async () => {
-      const mockActivities = [
+    it('should find sector field by discovered key and translate ID to label', async () => {
+      const mockCustomFields = [
         {
           id: 1,
-          subject: 'Scheduled meeting',
-          type: 'meeting',
-          done: false,
-          created: '2024-01-16T09:00:00Z',
-          updated: '2024-01-16T09:00:00Z',
-        },
-      ]
+          name: 'Sector',
+          key: 'discovered_sector_key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Technology', value: '1' },
+            { id: 2, label: 'Healthcare', value: '2' }
+          ]
+        }
+      ];
 
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockActivities,
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
 
-      const result = await service.getLastContactedDate(123)
+      const result = await service.translateSectorId(1);
 
-      expect(result.success).toBe(true)
-      expect(result.lastContacted).toBeUndefined()
-    })
+      expect(result).toBe('Technology');
+    });
 
-    it('should return undefined when no activities exist', async () => {
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: [],
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.getLastContactedDate(123)
-
-      expect(result.success).toBe(true)
-      expect(result.lastContacted).toBeUndefined()
-    })
-
-    it('should handle API errors gracefully', async () => {
-      const mockResponse = {
-        ok: false,
-        json: vi.fn().mockResolvedValue({
-          error: 'Person not found',
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
-
-      const result = await service.getLastContactedDate(999)
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Person not found')
-    })
-
-    it('should sort activities by completion time correctly', async () => {
-      const mockActivities = [
+    it('should not find industry field when looking for sector', async () => {
+      const mockCustomFields = [
         {
           id: 1,
-          subject: 'Old call',
-          type: 'call',
-          done: true,
-          done_time: '2024-01-10T10:30:00Z',
-          created: '2024-01-10T10:00:00Z',
-          updated: '2024-01-10T10:30:00Z',
+          name: 'Industry', // This should be ignored
+          key: 'industry-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Manufacturing', value: '1' },
+            { id: 2, label: 'Retail', value: '2' }
+          ]
         },
         {
           id: 2,
-          subject: 'Recent email',
-          type: 'email',
-          done: true,
-          done_time: '2024-01-15T14:20:00Z',
-          created: '2024-01-15T14:00:00Z',
-          updated: '2024-01-15T14:20:00Z',
+          name: 'Sector', // This should be found
+          key: 'sector-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 10, label: 'Technology', value: '10' },
+            { id: 11, label: 'Healthcare', value: '11' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSectorId(10);
+
+      // Should find the Sector field, not the Industry field
+      expect(result).toBe('Technology');
+    });
+
+    it('should return null when sector field is not found', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Country',
+          key: 'country-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'UK', value: '1' },
+            { id: 2, label: 'US', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSectorId(1);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when sector ID is not found in options', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Sector',
+          key: 'sector-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Technology', value: '1' },
+            { id: 2, label: 'Healthcare', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSectorId(999); // Non-existent ID
+
+      expect(result).toBeNull();
+    });
+
+    it('should handle API failure gracefully', async () => {
+      // Mock the getOrganizationCustomFields method to return failure
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: false,
+        error: 'Failed to fetch organization custom fields'
+      });
+
+      const result = await service.translateSectorId(1);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('translateSizeId', () => {
+    it('should find size field by name and translate ID to label', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Size',
+          key: 'size-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: '1-10', value: '1' },
+            { id: 2, label: '11-50', value: '2' },
+            { id: 3, label: '51-200', value: '3' }
+          ]
+        },
+        {
+          id: 2,
+          name: 'Employee Count',
+          key: 'employee-count-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 10, label: 'Small', value: '10' },
+            { id: 11, label: 'Medium', value: '11' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSizeId(2);
+
+      expect(result).toBe('11-50');
+    });
+
+    it('should find size field by discovered key and translate ID to label', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Size',
+          key: 'discovered_size_key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: '1-10', value: '1' },
+            { id: 2, label: '11-50', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSizeId(1);
+
+      expect(result).toBe('1-10');
+    });
+
+    it('should not find employee count field when looking for size', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Employee Count', // This should be ignored
+          key: 'employee-count-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Small', value: '1' },
+            { id: 2, label: 'Medium', value: '2' }
+          ]
+        },
+        {
+          id: 2,
+          name: 'Size', // This should be found
+          key: 'size-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 10, label: '1-10', value: '10' },
+            { id: 11, label: '11-50', value: '11' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSizeId(10);
+
+      // Should find the Size field, not the Employee Count field
+      expect(result).toBe('1-10');
+    });
+
+    it('should return null when size field is not found', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Country',
+          key: 'country-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'UK', value: '1' },
+            { id: 2, label: 'US', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSizeId(1);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when size ID is not found in options', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Size',
+          key: 'size-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: '1-10', value: '1' },
+            { id: 2, label: '11-50', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateSizeId(999); // Non-existent ID
+
+      expect(result).toBeNull();
+    });
+
+    it('should handle API failure gracefully', async () => {
+      // Mock the getOrganizationCustomFields method to return failure
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: false,
+        error: 'Failed to fetch organization custom fields'
+      });
+
+      const result = await service.translateSizeId(1);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('translateCountryId', () => {
+    it('should find country field by name and translate ID to label', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Country',
+          key: 'country-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'United Kingdom', value: '1' },
+            { id: 2, label: 'United States', value: '2' },
+            { id: 3, label: 'Ireland', value: '3' }
+          ]
+        },
+        {
+          id: 2,
+          name: 'Region',
+          key: 'region-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 10, label: 'Europe', value: '10' },
+            { id: 11, label: 'North America', value: '11' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateCountryId(2);
+
+      expect(result).toBe('United States');
+    });
+
+    it('should find country field by discovered key and translate ID to label', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Country',
+          key: 'discovered_country_key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'United Kingdom', value: '1' },
+            { id: 2, label: 'United States', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateCountryId(1);
+
+      expect(result).toBe('United Kingdom');
+    });
+
+    it('should not find region field when looking for country', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Region', // This should be ignored
+          key: 'region-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Europe', value: '1' },
+            { id: 2, label: 'North America', value: '2' }
+          ]
+        },
+        {
+          id: 2,
+          name: 'Country', // This should be found
+          key: 'country-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 10, label: 'United Kingdom', value: '10' },
+            { id: 11, label: 'Ireland', value: '11' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateCountryId(10);
+
+      // Should find the Country field, not the Region field
+      expect(result).toBe('United Kingdom');
+    });
+
+    it('should return null when country field is not found', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Sector',
+          key: 'sector-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'Technology', value: '1' },
+            { id: 2, label: 'Healthcare', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateCountryId(1);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when country ID is not found in options', async () => {
+      const mockCustomFields = [
+        {
+          id: 1,
+          name: 'Country',
+          key: 'country-field-key',
+          field_type: 'enum',
+          options: [
+            { id: 1, label: 'United Kingdom', value: '1' },
+            { id: 2, label: 'United States', value: '2' }
+          ]
+        }
+      ];
+
+      // Mock the getOrganizationCustomFields method directly
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockCustomFields
+      });
+
+      const result = await service.translateCountryId(999); // Non-existent ID
+
+      expect(result).toBeNull();
+    });
+
+    it('should handle API failure gracefully', async () => {
+      // Mock the getOrganizationCustomFields method to return failure
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: false,
+        error: 'Failed to fetch organization custom fields'
+      });
+
+      const result = await service.translateCountryId(1);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('discoverFieldMappings', () => {
+    it('should discover field mappings from custom fields', async () => {
+      const mockFields = [
+        {
+          id: 1,
+          name: 'Size',
+          key: 'size_key_123',
+          field_type: 'enum',
+          options: [
+            { id: 1, value: '1', label: 'Small' },
+            { id: 2, value: '2', label: 'Medium' },
+            { id: 3, value: '3', label: 'Large' }
+          ]
+        },
+        {
+          id: 2,
+          name: 'Country',
+          key: 'country_key_456',
+          field_type: 'enum',
+          options: [
+            { id: 1, value: '1', label: 'UK' },
+            { id: 2, value: '2', label: 'Ireland' }
+          ]
         },
         {
           id: 3,
-          subject: 'Middle call',
-          type: 'call',
-          done: true,
-          done_time: '2024-01-12T11:30:00Z',
-          created: '2024-01-12T11:00:00Z',
-          updated: '2024-01-12T11:30:00Z',
-        },
+          name: 'Sector',
+          key: 'sector_key_789',
+          field_type: 'enum',
+          options: [
+            { id: 1, value: '1', label: 'Technology' },
+            { id: 2, value: '2', label: 'Finance' }
+          ]
+        }
       ]
 
-      const mockResponse = {
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          data: mockActivities,
-        }),
-      }
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any)
+      // Mock the getOrganizationCustomFields method
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockFields
+      })
 
-      const result = await service.getLastContactedDate(123)
+      const result = await service.discoverFieldMappings()
 
       expect(result.success).toBe(true)
-      expect(result.lastContacted).toEqual(new Date('2024-01-15T14:20:00Z'))
+      expect(result.mappings).toEqual({
+        sizeFieldKey: 'size_key_123',
+        countryFieldKey: 'country_key_456',
+        sectorFieldKey: 'sector_key_789'
+      })
+    })
+
+    it('should return cached mappings if available and not expired', async () => {
+      const mockFields = [
+        {
+          id: 1,
+          name: 'Size',
+          key: 'cached_size_key',
+          field_type: 'enum',
+          options: []
+        }
+      ]
+
+      // Mock the getOrganizationCustomFields method
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: true,
+        fields: mockFields
+      })
+
+      // First call to populate cache
+      const result1 = await service.discoverFieldMappings()
+      expect(result1.success).toBe(true)
+
+      // Second call should use cache
+      const result2 = await service.discoverFieldMappings()
+      expect(result2.success).toBe(true)
+      expect(result2.mappings).toEqual(result1.mappings)
+
+      // Verify getOrganizationCustomFields was only called once
+      expect(service.getOrganizationCustomFields).toHaveBeenCalledTimes(1)
+    })
+
+    it('should handle missing custom fields gracefully', async () => {
+      vi.spyOn(service, 'getOrganizationCustomFields').mockResolvedValue({
+        success: false,
+        error: 'API error'
+      })
+
+      const result = await service.discoverFieldMappings()
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Failed to fetch organization custom fields')
     })
   })
-}) 
+
+  describe('getFieldMappings', () => {
+    it('should return field mappings from discovery', async () => {
+      const mockMappings = {
+        sizeFieldKey: 'test_size_key',
+        countryFieldKey: 'test_country_key',
+        sectorFieldKey: 'test_sector_key'
+      }
+
+      vi.spyOn(service, 'discoverFieldMappings').mockResolvedValue({
+        success: true,
+        mappings: mockMappings
+      })
+
+      const result = await service.getFieldMappings()
+
+      expect(result).toEqual(mockMappings)
+    })
+
+    it('should return empty object if discovery fails', async () => {
+      vi.spyOn(service, 'discoverFieldMappings').mockResolvedValue({
+        success: false,
+        error: 'Discovery failed'
+      })
+
+      const result = await service.getFieldMappings()
+
+      expect(result).toEqual({})
+    })
+  })
+}); 

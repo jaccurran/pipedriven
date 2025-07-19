@@ -12,10 +12,26 @@ export const createMockUser = (overrides: Partial<User> = {}): User => ({
   password: null,
   role: 'CONSULTANT',
   pipedriveApiKey: 'test-api-key-123',
+  lastSyncTimestamp: null,
+  syncStatus: 'NOT_SYNCED',
+  quickActionMode: 'SIMPLE',
+  emailNotifications: true,
+  activityReminders: true,
+  campaignUpdates: true,
+  syncStatusAlerts: true,
   emailVerified: new Date(),
   image: null,
   createdAt: new Date('2024-01-01T00:00:00.000Z'),
   updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+  ...overrides,
+})
+
+export const createMockPreferences = (overrides: any = {}) => ({
+  quickActionMode: 'SIMPLE' as const,
+  emailNotifications: true,
+  activityReminders: true,
+  campaignUpdates: true,
+  syncStatusAlerts: true,
   ...overrides,
 })
 

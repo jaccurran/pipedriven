@@ -31,9 +31,10 @@ export async function GET() {
       pipedriveService.getOrganizationCustomFields()
     ])
 
-    // Extract unique countries and industries
+    // Extract unique countries, industries, and sizes
     const countries = new Set<string>()
     const sectors = new Set<string>()
+    const sizes = new Set<string>()
     const recurringFrequencies = new Set<string>()
     const customFields = {
       person: personFieldsResult.success ? personFieldsResult.fields || [] : [],
@@ -57,12 +58,17 @@ export async function GET() {
       if ((org as unknown as Record<string, unknown>).industry && typeof (org as unknown as Record<string, unknown>).industry === 'string') {
         sectors.add((org as unknown as Record<string, unknown>).industry as string)
       }
+
+      // Add size if available
+      if ((org as unknown as Record<string, unknown>).size && typeof (org as unknown as Record<string, unknown>).size === 'string') {
+        sizes.add((org as unknown as Record<string, unknown>).size as string)
+      }
     })
 
     // Extract countries and sectors from specific custom fields
     customFields.organization.forEach(field => {
       // Organization Country field
-      if (field.key === 'ffabdba1164ad9f4cb96c1f12ab12294f2987122' || field.name === 'Country') {
+      if (field.key === 'c388fe9ef3ec06109a3bcd215f965dc4f35690a3' || field.key === 'ffabdba1164ad9f4cb96c1f12ab12294f2987122' || field.name === 'Country') {
         if (field.options && field.options.length > 0) {
           field.options.forEach(option => {
             if (option.label && option.label.length > 0) {
@@ -78,6 +84,17 @@ export async function GET() {
           field.options.forEach(option => {
             if (option.label && option.label.length > 0) {
               sectors.add(option.label)
+            }
+          })
+        }
+      }
+      
+      // Organization Size field
+      if (field.key === '4cd70be402c43c55b3fde83d05becf624852344c' || field.name === 'Size') {
+        if (field.options && field.options.length > 0) {
+          field.options.forEach(option => {
+            if (option.label && option.label.length > 0) {
+              sizes.add(option.label)
             }
           })
         }
@@ -123,7 +140,8 @@ export async function GET() {
         },
         select: {
           country: true,
-          industry: true
+          industry: true,
+          size: true
         }
       })
 
@@ -133,6 +151,9 @@ export async function GET() {
         }
         if (org.industry) {
           sectors.add(org.industry)
+        }
+        if (org.size) {
+          sizes.add(org.size)
         }
       })
     } catch (dbError) {
@@ -149,6 +170,10 @@ export async function GET() {
       .filter(sector => sector && sector.length > 0)
       .sort()
 
+    const sizesList = Array.from(sizes)
+      .filter(size => size && size.length > 0)
+      .sort()
+
     const recurringFrequenciesList = Array.from(recurringFrequencies)
       .filter(freq => freq && freq.length > 0)
       .sort()
@@ -156,6 +181,7 @@ export async function GET() {
     return createApiSuccess({
       countries: countriesList,
       sectors: sectorsList,
+      sizes: sizesList,
       recurringFrequencies: recurringFrequenciesList,
       totalOrganizations: organizations.length,
       customFields: {
